@@ -290,3 +290,97 @@ async def test_openai_backend_via_registry(client):
     assert result.text
     assert result.backend == "openai-whisper"
     assert result.duration == 1.23
+
+
+def test_job_state_transitions():
+    from app.services.smart_processing.job_states import assert_transition, can_transition
+
+    assert can_transition("queued", "preparing")
+    assert can_transition("processing", "finalizing")
+    assert not can_transition("completed", "queued")
+    assert not can_transition("queued", "completed")
+    with pytest.raises(ValueError):
+        assert_transition("failed", "processing")
+
+
+def test_silence_aware_chunk_planning():
+    from app.services.smart_processing.chunking import (
+        SilenceGap,
+        parse_ffmpeg_silencedetect,
+        plan_silence_aware_chunks,
+    )
+
+    gaps = [SilenceGap(590.0, 595.0), SilenceGap(1190.0, 1195.0)]
+    chunks = plan_silence_aware_chunks(
+        1500.0, gaps, chunk_sec=600.0, overlap_sec=1.0, min_chunk_sec=30.0
+    )
+    assert len(chunks) >= 2
+    assert chunks[0].start_sec == 0.0
+    # Cut should prefer silence midpoints near window ends
+    assert 590.0 <= chunks[0].end_sec <= 595.0
+    parsed = parse_ffmpeg_silencedetect(
+        "silence_start: 1.5\nsilence_end: 2.0 | silence_duration: 0.5\n"
+    )
+    assert len(parsed) == 1
+    assert parsed[0].start_sec == 1.5
+
+
+@pytest.mark.asyncio
+async def test_stale_lease_recovery(tmp_path):
+    from app.database import Database
+    from app.models import JobStatus
+
+    db = Database(str(tmp_path / "lease.db"))
+    await db.connect()
+    try:
+        job = await db.create_job(
+            {
+                "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                "original_filename": "lease.mp3",
+                "stored_filename": "lease.mp3",
+                "upload_path": str(tmp_path / "lease.mp3"),
+                "file_size": 1,
+                "model_name": "tiny",
+                "language": "en",
+            }
+        )
+        await db.update_job(
+            job["id"],
+            status=JobStatus.PREPARING.value,
+            worker_id="dead-worker",
+            lease_expires_at="2000-01-01T00:00:00+00:00",
+        )
+        n = await db.recover_stale_leases()
+        assert n == 1
+        refreshed = await db.get_job(job["id"])
+        assert refreshed["status"] == JobStatus.QUEUED.value
+        assert refreshed["worker_id"] is None
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_retry_exhaustion(tmp_path):
+    from app.database import Database
+    from app.models import JobStatus
+
+    db = Database(str(tmp_path / "retry.db"))
+    await db.connect()
+    try:
+        job = await db.create_job(
+            {
+                "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+                "original_filename": "retry.mp3",
+                "stored_filename": "retry.mp3",
+                "upload_path": str(tmp_path / "retry.mp3"),
+                "file_size": 1,
+                "model_name": "tiny",
+                "language": "en",
+                "max_retries": 1,
+            }
+        )
+        await db.update_job(job["id"], status=JobStatus.FAILED.value, retry_count=1)
+        with pytest.raises(ValueError, match="Retry limit"):
+            await db.retry_job(job["id"])
+    finally:
+        await db.close()

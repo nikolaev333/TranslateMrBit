@@ -75,7 +75,10 @@ class Settings(BaseSettings):
     processing_chunk_seconds: float = 600.0
     processing_chunk_overlap_seconds: float = 1.0
     processing_job_timeout_seconds: float = 0.0  # 0 = disabled
+    processing_lease_seconds: float = 1800.0  # worker ownership lease
     processing_max_retries: int = 2
+    job_submit_rate_limit: int = 30
+    job_submit_rate_window_seconds: int = 60
     worker_id: str = ""
 
     @field_validator("app_password", "session_secret")

@@ -35,6 +35,7 @@ async def test_fail_interrupted_processing_jobs(tmp_path):
                 "task": "transcribe",
             }
         )
+        await db.update_job(job["id"], status=JobStatus.PREPARING.value)
         await db.update_job(
             job["id"],
             status=JobStatus.PROCESSING.value,
@@ -128,6 +129,10 @@ async def recovery_client(monkeypatch, tmp_path):
             "model_name": "large",
             "language": "Bulgarian",
         }
+    )
+    await db.update_job(
+        "33333333-3333-3333-3333-333333333333",
+        status=JobStatus.PREPARING.value,
     )
     await db.update_job(
         "33333333-3333-3333-3333-333333333333",

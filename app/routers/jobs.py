@@ -83,6 +83,19 @@ async def create_job(
     priority: Annotated[int, Form()] = 100,
     allow_unsafe_model: Annotated[str, Form()] = "false",
 ):
+    from app.auth import rate_limiter
+
+    client_host = request.client.host if request.client else "unknown"
+    if not rate_limiter.is_allowed(
+        f"job-submit:{client_host}",
+        getattr(settings, "job_submit_rate_limit", 30),
+        getattr(settings, "job_submit_rate_window_seconds", 60),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many job submissions. Please wait and try again.",
+        )
+
     model_name = (model or settings.whisper_model).strip()
     language_name = (language or settings.whisper_language).strip() or "Bulgarian"
     backend_name = (inference_backend or settings.inference_backend or "openai-whisper").strip()

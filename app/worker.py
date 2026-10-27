@@ -62,6 +62,21 @@ class TranscriptionWorker:
         recovered = await self.db.requeue_interrupted_jobs()
         if recovered:
             log_event(logger, "interrupted_jobs_failed", count=recovered)
+        try:
+            stale = await self.db.recover_stale_leases()
+            if stale:
+                log_event(logger, "stale_leases_requeued", count=stale)
+        except Exception:
+            logger.debug("stale lease recovery skipped", exc_info=True)
+        try:
+            timeout_sec = float(
+                getattr(self.settings, "processing_job_timeout_seconds", 0) or 0
+            )
+            timed_out = await self.db.fail_timed_out_jobs(timeout_sec)
+            if timed_out:
+                log_event(logger, "jobs_timed_out", count=timed_out)
+        except Exception:
+            logger.debug("timeout sweep skipped", exc_info=True)
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="transcription-worker")
         log_event(logger, "transcription_worker_started", worker_id=self.worker_id)
@@ -85,6 +100,15 @@ class TranscriptionWorker:
                     )
                 except Exception:
                     logger.debug("heartbeat failed", exc_info=True)
+                try:
+                    timeout_sec = float(
+                        getattr(self.settings, "processing_job_timeout_seconds", 0) or 0
+                    )
+                    if timeout_sec > 0:
+                        await self.db.fail_timed_out_jobs(timeout_sec)
+                    await self.db.recover_stale_leases()
+                except Exception:
+                    logger.debug("lease/timeout sweep skipped", exc_info=True)
 
                 job = await self.db.claim_next_job(
                     worker_id=self.worker_id,
@@ -258,16 +282,28 @@ class TranscriptionWorker:
             )
 
             backend = get_backend(backend_name, self.settings, whisper_engine=self.engine)
+            try:
+                await self.db.renew_job_lease(
+                    job_id,
+                    lease_seconds=float(
+                        getattr(self.settings, "processing_lease_seconds", 1800) or 1800
+                    ),
+                )
+            except Exception:
+                logger.debug("lease renew skipped", exc_info=True)
+
             t_inf0 = time.monotonic()
             tr = await loop.run_in_executor(
                 self._executor,
-                lambda: backend.transcribe(
-                    upload_path,
+                lambda: self._transcribe_with_optional_chunking(
+                    backend,
+                    upload_path=upload_path,
                     model_name=model_name,
                     language=language,
                     task=task,
                     progress_callback=progress,
                     initial_prompt=initial_prompt,
+                    job_id=job_id,
                 ),
             )
             inference_sec = time.monotonic() - t_inf0
@@ -455,6 +491,131 @@ class TranscriptionWorker:
                     log_event(logger, "model_unloaded_after_job", job_id=job_id)
                 except Exception:
                     logger.debug("unload_model failed", exc_info=True)
+
+    def _transcribe_with_optional_chunking(
+        self,
+        backend,
+        *,
+        upload_path: str,
+        model_name: str,
+        language: str,
+        task: str,
+        progress_callback,
+        initial_prompt: str | None,
+        job_id: str,
+    ):
+        """Whole-file by default; optional chunked path with whole-file fallback."""
+        from app.services.smart_processing.chunking import (
+            assemble_text,
+            detect_silence_gaps,
+            extract_audio_chunk,
+            merge_chunk_segments,
+            plan_fixed_chunks,
+            plan_silence_aware_chunks,
+        )
+
+        def _once(path: str):
+            return backend.transcribe(
+                path,
+                model_name=model_name,
+                language=language,
+                task=task,
+                progress_callback=progress_callback,
+                initial_prompt=initial_prompt,
+            )
+
+        enable = bool(getattr(self.settings, "processing_enable_chunking", False))
+        chunk_sec = float(getattr(self.settings, "processing_chunk_seconds", 600) or 600)
+        overlap = float(
+            getattr(self.settings, "processing_chunk_overlap_seconds", 1.0) or 0.0
+        )
+        if not enable or chunk_sec <= 0:
+            return _once(upload_path)
+
+        duration = None
+        try:
+            import json
+            import subprocess
+
+            proc = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "json",
+                    upload_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if proc.returncode == 0:
+                duration = float(json.loads(proc.stdout).get("format", {}).get("duration"))
+        except Exception:
+            duration = None
+
+        if duration is None or duration <= chunk_sec:
+            return _once(upload_path)
+
+        try:
+            gaps = detect_silence_gaps(upload_path)
+            chunks = (
+                plan_silence_aware_chunks(
+                    duration, gaps, chunk_sec=chunk_sec, overlap_sec=overlap
+                )
+                if gaps
+                else plan_fixed_chunks(
+                    duration, chunk_sec=chunk_sec, overlap_sec=overlap
+                )
+            )
+            if len(chunks) <= 1:
+                return _once(upload_path)
+
+            chunk_dir = Path(self.settings.output_dir) / job_id / "chunks"
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            chunk_results = []
+            language_out = None
+            for chunk in chunks:
+                progress_callback(
+                    f"Transcribing chunk {chunk.index + 1}/{len(chunks)}",
+                    None,
+                )
+                dest = chunk_dir / f"chunk_{chunk.index:04d}.wav"
+                extract_audio_chunk(upload_path, str(dest), chunk.start_sec, chunk.end_sec)
+                part = _once(str(dest))
+                compat = part.to_whisper_compat() if hasattr(part, "to_whisper_compat") else part
+                language_out = language_out or compat.get("language")
+                segs = list(compat.get("segments") or [])
+                chunk_results.append((chunk, segs))
+                try:
+                    dest.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+            merged = merge_chunk_segments(chunk_results)
+            text = assemble_text(merged)
+            from app.inference.base import TranscriptionResult
+
+            return TranscriptionResult(
+                text=text,
+                language=language_out,
+                duration=duration,
+                segments=merged,
+                model_name=model_name,
+                backend=getattr(backend, "backend_id", "") or "",
+                metadata={"chunked": True, "chunk_count": len(chunks)},
+            )
+        except Exception:
+            logger.warning(
+                "Chunked transcription failed for %s — falling back to whole file",
+                job_id,
+                exc_info=True,
+            )
+            return _once(upload_path)
 
 
 def _safe_float(value) -> float | None:

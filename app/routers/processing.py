@@ -183,6 +183,7 @@ async def models_download(
 @router.get("/api/models/recommendations")
 async def models_recommendations(
     settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Database, Depends(get_db)],
     device: Annotated[str | None, Query()] = None,
     backend: Annotated[str | None, Query()] = None,
 ):
@@ -195,12 +196,14 @@ async def models_recommendations(
 
     disk = list_model_download_status(settings.whisper_model_dir, SUPPORTED_MODELS)
     installed = {d["name"] for d in disk if d.get("downloaded")}
+    observed = await db.observed_model_memory_gb()
     return recommend_models(
         device=device or settings.whisper_device,
         backend=backend or settings.inference_backend,
         safety_margin_gb=settings.processing_safety_margin_gb,
         resources=resources,
         installed_models=installed,
+        observed_usage_gb=observed,
     )
 
 

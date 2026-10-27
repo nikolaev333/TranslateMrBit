@@ -242,6 +242,12 @@ class Database:
     async def update_job(self, job_id: str, **fields: Any) -> dict[str, Any] | None:
         if not fields:
             return await self.get_job(job_id)
+        if "status" in fields:
+            current = await self.get_job(job_id)
+            if current is not None:
+                from app.services.smart_processing.job_states import assert_transition
+
+                assert_transition(current.get("status"), str(fields["status"]))
         fields["updated_at"] = utc_now()
         assignments = ", ".join(f"{key} = ?" for key in fields)
         values = list(fields.values()) + [job_id]
@@ -306,12 +312,25 @@ class Database:
 
             job = dict(job_row)
             now = utc_now()
+            from datetime import datetime, timedelta, timezone
+
+            lease_sec = 1800.0
+            try:
+                from app.config import get_settings
+
+                lease_sec = float(get_settings().processing_lease_seconds or 1800.0)
+            except Exception:
+                lease_sec = 1800.0
+            lease_expires = (
+                datetime.now(timezone.utc) + timedelta(seconds=max(60.0, lease_sec))
+            ).isoformat()
             await self.conn.execute(
                 """
                 UPDATE jobs
                 SET status = ?, progress_message = ?, progress_percent = ?,
                     cpu_percent = ?, started_at = COALESCE(started_at, ?),
-                    updated_at = ?, worker_id = ?, processing_stage = ?
+                    updated_at = ?, worker_id = ?, processing_stage = ?,
+                    lease_expires_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -323,6 +342,7 @@ class Database:
                     now,
                     worker_id,
                     "preparing",
+                    lease_expires,
                     job["id"],
                 ),
             )
@@ -335,6 +355,7 @@ class Database:
             job["updated_at"] = now
             job["worker_id"] = worker_id
             job["processing_stage"] = "preparing"
+            job["lease_expires_at"] = lease_expires
             return job
         except Exception:
             await self.conn.rollback()
@@ -1535,6 +1556,107 @@ class Database:
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+    async def observed_model_memory_gb(self) -> dict[str, float]:
+        """Average measured peak RSS per model from completed metrics (GB)."""
+        cursor = await self.conn.execute(
+            """
+            SELECT model_name, AVG(peak_memory_bytes) AS avg_peak
+            FROM processing_metrics
+            WHERE peak_memory_bytes IS NOT NULL
+              AND peak_memory_bytes > 0
+              AND model_name IS NOT NULL
+            GROUP BY model_name
+            """
+        )
+        rows = await cursor.fetchall()
+        out: dict[str, float] = {}
+        for row in rows:
+            name = row["model_name"]
+            avg_peak = row["avg_peak"]
+            if not name or avg_peak is None:
+                continue
+            out[str(name)] = float(avg_peak) / float(1024**3)
+        return out
+
+    async def recover_stale_leases(self, *, now_iso: str | None = None) -> int:
+        """Re-queue jobs whose worker lease expired (abandoned work)."""
+        now = now_iso or utc_now()
+        cursor = await self.conn.execute(
+            """
+            UPDATE jobs
+            SET status = ?, progress_message = ?, error_message = ?,
+                worker_id = NULL, lease_expires_at = NULL,
+                processing_stage = ?, updated_at = ?
+            WHERE status IN (?, ?, ?)
+              AND lease_expires_at IS NOT NULL
+              AND lease_expires_at < ?
+            """,
+            (
+                JobStatus.QUEUED.value,
+                "Re-queued after expired worker lease",
+                "Worker lease expired — previous owner assumed crashed",
+                "queued",
+                now,
+                JobStatus.PREPARING.value,
+                JobStatus.PROCESSING.value,
+                JobStatus.FINALIZING.value,
+                now,
+            ),
+        )
+        await self.conn.commit()
+        return int(cursor.rowcount or 0)
+
+    async def fail_timed_out_jobs(self, timeout_seconds: float) -> int:
+        """Fail active jobs that exceeded wall-clock timeout since started_at."""
+        if timeout_seconds <= 0:
+            return 0
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
+        ).isoformat()
+        now = utc_now()
+        cursor = await self.conn.execute(
+            """
+            UPDATE jobs
+            SET status = ?, progress_message = ?, error_message = ?,
+                completed_at = ?, updated_at = ?, worker_id = NULL,
+                lease_expires_at = NULL, processing_stage = ?
+            WHERE status IN (?, ?, ?)
+              AND started_at IS NOT NULL
+              AND started_at < ?
+              AND COALESCE(cancel_requested, 0) = 0
+            """,
+            (
+                JobStatus.FAILED.value,
+                "Failed",
+                f"Job exceeded configured timeout ({timeout_seconds:.0f}s)",
+                now,
+                now,
+                "failed",
+                JobStatus.PREPARING.value,
+                JobStatus.PROCESSING.value,
+                JobStatus.FINALIZING.value,
+                cutoff,
+            ),
+        )
+        await self.conn.commit()
+        return int(cursor.rowcount or 0)
+
+    async def renew_job_lease(
+        self, job_id: str, *, lease_seconds: float = 1800.0
+    ) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        expires = (
+            datetime.now(timezone.utc) + timedelta(seconds=max(60.0, lease_seconds))
+        ).isoformat()
+        await self.conn.execute(
+            "UPDATE jobs SET lease_expires_at = ?, updated_at = ? WHERE id = ?",
+            (expires, utc_now(), job_id),
+        )
+        await self.conn.commit()
 
 
 class ConflictError(Exception):

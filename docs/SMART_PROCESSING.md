@@ -8,19 +8,24 @@ OpenAI Whisper remains a third-party speech recognition model. This document des
 
 - Lightweight resource monitoring (`psutil` + optional cgroup limits; no torch in API)
 - Model profiles and hardware-aware recommendations (never silent model substitution)
+- Observed peak memory from completed jobs feeds recommendations when available
 - Inference backends: `openai-whisper` (default) and optional `faster-whisper`
-- Extended job states, priorities, atomic SQLite claims, cancel/retry
+- Extended job states with validated transitions, priorities, atomic SQLite claims, cancel/retry
+- Worker leases + optional job timeouts + stale-lease recovery
 - Resource-aware admission with configurable safety margins
-- Optional long-audio chunking helpers (feature-flagged; disabled by default)
+- Optional long-audio chunking (fixed or silence-aware; feature-flagged; whole-file fallback)
 - Worker heartbeats, interrupted-job recovery, processing metrics / RTF
+- Job submission rate limiting
 - Dashboard at `/processing` and authenticated processing APIs
+- `JobQueueAdapter` port with SQLite implementation; Postgres/Redis adapters planned only
 
 ## Not claimed / future work
 
 - Multi-host distributed queue (current design is single-server SQLite with atomic claims)
-- Automatic production Coolify deploy or merge to `main`
+- Automatic production Coolify deploy or merge to `main` without explicit approval
 - Guaranteed memory safety from estimates alone
 - Quality improvement solely from chunking
+- PostgreSQL / Redis queue adapters (interface documented; not enabled)
 
 ## Configuration (env)
 
@@ -34,8 +39,15 @@ OpenAI Whisper remains a third-party speech recognition model. This document des
 | `PROCESSING_CHUNK_SECONDS` | `600` | Chunk window when enabled |
 | `PROCESSING_CHUNK_OVERLAP_SECONDS` | `1` | Overlap for boundary handling |
 | `PROCESSING_MAX_RETRIES` | `2` | Automatic retry budget |
+| `PROCESSING_JOB_TIMEOUT_SECONDS` | `0` | Wall-clock timeout (0 = off) |
+| `PROCESSING_LEASE_SECONDS` | `1800` | Worker ownership lease |
+| `JOB_SUBMIT_RATE_LIMIT` | `30` | Max job creates per window |
 | `INFERENCE_BACKEND` | `openai-whisper` | Default backend id |
 | `MAX_CONCURRENT_JOBS` | `1` | Worker concurrency |
+
+### Multi-host (planned)
+
+Requires shared uploads/outputs/models storage, a single logical DB or queue, and lease fencing across workers. See `app/services/smart_processing/queue_adapters.py`. Do not claim multi-host readiness until that stack is implemented and tested.
 
 ## Inference backends
 
