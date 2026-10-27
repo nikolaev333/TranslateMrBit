@@ -207,8 +207,13 @@ class WhisperEngine:
         language: str,
         task: str = "transcribe",
         progress_callback: ProgressCallback | None = None,
+        initial_prompt: str | None = None,
     ) -> dict[str, Any]:
-        """Run transcription. Always uses task=transcribe unless explicitly overridden."""
+        """Run transcription. Always uses task=transcribe unless explicitly overridden.
+
+        ``initial_prompt`` is optional Whisper context (e.g. Smart Vocabulary
+        terminology). Recognition is best-effort — Whisper may still miss terms.
+        """
         _emit(progress_callback, f"Loading model '{model_name}'", LOAD_PERCENT)
 
         model = self.load_model(model_name)
@@ -232,6 +237,7 @@ class WhisperEngine:
             task=task,
             device=self.device,
             audio=str(audio_path),
+            has_initial_prompt=bool(initial_prompt),
         )
         result = self._transcribe_with_progress(
             model,
@@ -240,6 +246,7 @@ class WhisperEngine:
             task=task,
             fp16=fp16,
             progress_callback=progress_callback,
+            initial_prompt=initial_prompt,
         )
         log_event(
             logger,
@@ -261,6 +268,7 @@ class WhisperEngine:
         task: str,
         fp16: bool,
         progress_callback: ProgressCallback | None,
+        initial_prompt: str | None = None,
     ) -> dict[str, Any]:
         """Call model.transcribe with a tqdm hook for real audio-window progress."""
         import tqdm as tqdm_mod
@@ -313,14 +321,16 @@ class WhisperEngine:
             setattr(obj, attr, ProgressTqdm)
 
         try:
-            # verbose=None → Whisper enables tqdm (disable = verbose is False → False).
-            return model.transcribe(
-                audio_path,
-                language=language,
-                task=task,
-                fp16=fp16,
-                verbose=None,
-            )
+            kwargs: dict[str, Any] = {
+                "language": language,
+                "task": task,
+                "fp16": fp16,
+                # verbose=None → Whisper enables tqdm (disable = verbose is False → False).
+                "verbose": None,
+            }
+            if initial_prompt:
+                kwargs["initial_prompt"] = initial_prompt
+            return model.transcribe(audio_path, **kwargs)
         finally:
             for obj, attr, original in originals:
                 setattr(obj, attr, original)

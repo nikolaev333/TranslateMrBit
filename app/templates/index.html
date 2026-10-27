@@ -4,6 +4,8 @@
 <nav class="nav">
   <a class="nav-link active" href="/">Transcribe</a>
   <a class="nav-link" href="/history">History</a>
+  <a class="nav-link" href="/vocabulary">Smart Vocabulary</a>
+  <a class="nav-link" href="/processing">Smart Processing</a>
   <form method="post" action="/logout" class="inline-form">
     <button type="submit" class="btn btn-ghost">Log out</button>
   </form>
@@ -57,7 +59,23 @@
           {% endfor %}
         </select>
       </label>
+      <label class="field">
+        <span>Inference backend</span>
+        <select id="backend-select" name="inference_backend">
+          <option value="openai-whisper" selected>openai-whisper</option>
+          <option value="faster-whisper">faster-whisper (optional)</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Priority (0–1000, higher first)</span>
+        <input type="number" id="priority-input" name="priority" min="0" max="1000" value="100" />
+      </label>
     </div>
+    <label class="field checkbox-field">
+      <input type="checkbox" id="allow-unsafe" name="allow_unsafe_model" value="true" />
+      <span>Allow unsafe model for current RAM (explicit confirmation — never auto-swapped)</span>
+    </label>
+    <p class="muted small" id="model-hint"></p>
 
     <button type="submit" class="btn btn-primary btn-block" id="start-btn" disabled>
       Start transcription
@@ -112,7 +130,47 @@
     </div>
   </div>
   <textarea id="result-text" class="result-text" readonly rows="16" placeholder="Transcription will appear here…"></textarea>
+  <p class="studio-entry" id="studio-entry" hidden>
+    <a class="btn btn-primary" id="open-studio-link" href="#">Open in Transcription Studio</a>
+  </p>
   <p class="toast" id="toast" hidden>Copied to clipboard</p>
+</section>
+
+<section class="panel corrections-panel" id="corrections-panel" hidden>
+  <div class="result-header">
+    <h2>Smart Corrections</h2>
+    <div class="result-actions">
+      <button type="button" class="btn btn-ghost" id="analyze-btn">Re-analyze</button>
+      <button type="button" class="btn btn-ghost" id="restore-original-btn">Restore original</button>
+      <button type="button" class="btn btn-secondary" id="save-reviewed-btn">Save reviewed</button>
+      <a class="btn btn-secondary" id="download-reviewed" href="#" hidden>Reviewed TXT</a>
+    </div>
+  </div>
+  <p class="muted" id="corrections-empty" hidden>No terminology suggestions for this transcript.</p>
+  <div class="corrections-compare">
+    <label class="field">
+      <span>Original text</span>
+      <textarea id="original-text" class="result-text" readonly rows="8"></textarea>
+    </label>
+    <label class="field">
+      <span>Suggested / reviewed text</span>
+      <textarea id="suggested-text" class="result-text" rows="8"></textarea>
+    </label>
+  </div>
+  <div id="matches-list" class="matches-list"></div>
+  <div class="wer-box">
+    <h3>Quality evaluation (optional)</h3>
+    <p class="muted">Paste a human-verified reference to measure Word Error Rate. Scores are computed from your input — nothing is invented.</p>
+    <label class="field">
+      <span>Reference transcript</span>
+      <textarea id="reference-text" class="result-text" rows="4" placeholder="Human-verified reference…"></textarea>
+    </label>
+    <div class="result-actions">
+      <button type="button" class="btn btn-ghost" id="wer-original-btn">WER vs original</button>
+      <button type="button" class="btn btn-ghost" id="wer-reviewed-btn">WER vs reviewed</button>
+    </div>
+    <pre class="wer-result" id="wer-result" hidden></pre>
+  </div>
 </section>
 {% endblock %}
 {% block scripts %}

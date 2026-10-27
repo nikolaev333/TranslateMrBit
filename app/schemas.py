@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Literal is used by DownloadFormat, Corrections, Evaluate schemas.
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -56,9 +58,109 @@ class JobResultResponse(BaseModel):
     id: str
     status: str
     transcription_text: str | None = None
+    reviewed_text: str | None = None
     detected_language: str | None = None
     duration_seconds: float | None = None
     available_formats: list[str] = Field(default_factory=list)
+    has_vocabulary_analysis: bool = False
+    suggestions_accepted: int = 0
+    suggestions_rejected: int = 0
+
+
+class VocabularyEntryCreate(BaseModel):
+    correct_term: str = Field(min_length=1, max_length=256)
+    alternatives: list[str] = Field(default_factory=list)
+    language: str = Field(default="any", max_length=64)
+    category: str = Field(default="General", max_length=64)
+    description: str = Field(default="", max_length=1024)
+    enabled: bool = True
+
+
+class VocabularyEntryUpdate(BaseModel):
+    correct_term: str | None = Field(default=None, min_length=1, max_length=256)
+    alternatives: list[str] | None = None
+    language: str | None = Field(default=None, max_length=64)
+    category: str | None = Field(default=None, max_length=64)
+    description: str | None = Field(default=None, max_length=1024)
+    enabled: bool | None = None
+
+
+class VocabularyEntryResponse(BaseModel):
+    id: str
+    correct_term: str
+    alternatives: list[str] = Field(default_factory=list)
+    language: str
+    category: str
+    description: str = ""
+    enabled: bool = True
+    created_at: str
+    updated_at: str
+
+
+class VocabularyListResponse(BaseModel):
+    entries: list[VocabularyEntryResponse]
+    total: int
+    categories: list[str] = Field(default_factory=list)
+
+
+class VocabularyMatchResponse(BaseModel):
+    entry_id: str
+    correct: str
+    matched_text: str
+    start: int
+    end: int
+    category: str
+    language: str
+
+
+class VocabularyAnalysisResponse(BaseModel):
+    job_id: str
+    original_text: str
+    suggested_text: str
+    matches: list[VocabularyMatchResponse] = Field(default_factory=list)
+    reviewed_text: str | None = None
+    vocabulary_prompt_used: str | None = None
+
+
+class CorrectionDecision(BaseModel):
+    match_index: int
+    action: Literal["accept", "reject", "edit"] = "reject"
+    replacement: str | None = None
+
+
+class CorrectionsRequest(BaseModel):
+    decisions: list[CorrectionDecision] = Field(default_factory=list)
+    reviewed_text: str | None = None
+    restore_original: bool = False
+
+
+class CorrectionsResponse(BaseModel):
+    job_id: str
+    original_text: str
+    reviewed_text: str
+    suggestions_accepted: int
+    suggestions_rejected: int
+
+
+class EvaluateRequest(BaseModel):
+    reference_transcript: str = Field(min_length=1)
+    compare_against: Literal["original", "reviewed"] = "reviewed"
+
+
+class EvaluateResponse(BaseModel):
+    job_id: str
+    compare_against: str
+    hypothesis_text: str
+    reference_transcript: str
+    wer: float
+    reference_words: int
+    hypothesis_words: int
+    substitutions: int
+    deletions: int
+    insertions: int
+    edits: int
+    suggestions_accepted: int
+    suggestions_rejected: int
 
 
 class JobListResponse(BaseModel):

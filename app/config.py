@@ -52,6 +52,32 @@ class Settings(BaseSettings):
     run_embedded_worker: bool = False
     unload_model_after_job: bool = True
 
+    # Inference backend: openai-whisper today; faster-whisper reserved for future.
+    inference_backend: str = "openai-whisper"
+    # MrBit Smart Vocabulary — Whisper initial_prompt length budget (chars).
+    vocabulary_prompt_max_chars: int = 800
+    # Auto-run Smart Vocabulary analysis after each completed job.
+    vocabulary_auto_analyze: bool = True
+    # Seed a few demo iGaming terms when the vocabulary table is empty.
+    vocabulary_seed_defaults: bool = True
+
+    # MrBit Quality Analyzer
+    quality_auto_analyze: bool = False
+    quality_include_audio: bool = True
+    quality_max_audio_analyze_seconds: float = 600.0
+
+    # MrBit Smart Processing Engine
+    smart_processing_enabled: bool = True
+    processing_safety_margin_gb: float = 0.75
+    processing_enforce_memory_gate: bool = True
+    processing_allow_unsafe_models: bool = False
+    processing_enable_chunking: bool = False
+    processing_chunk_seconds: float = 600.0
+    processing_chunk_overlap_seconds: float = 1.0
+    processing_job_timeout_seconds: float = 0.0  # 0 = disabled
+    processing_max_retries: int = 2
+    worker_id: str = ""
+
     @field_validator("app_password", "session_secret")
     @classmethod
     def warn_default_secrets(cls, value: str) -> str:

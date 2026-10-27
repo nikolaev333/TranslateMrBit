@@ -66,6 +66,8 @@
           <td>
             <div class="row-actions">
               <button type="button" class="btn btn-secondary btn-view" ${canDownload ? "" : "disabled"}>View</button>
+              <a class="btn btn-secondary" ${canDownload ? `href="/studio/${job.id}"` : "aria-disabled=true tabindex=-1 style=\"opacity:.45;pointer-events:none\""}>Studio</a>
+              <a class="btn btn-ghost" ${canDownload ? `href="/quality/${job.id}"` : "aria-disabled=true tabindex=-1 style=\"opacity:.45;pointer-events:none\""}>Quality</a>
               <a class="btn btn-ghost" ${canDownload ? `href="/api/jobs/${job.id}/download?format=txt"` : "aria-disabled=true tabindex=-1 style=\"opacity:.45;pointer-events:none\""}>TXT</a>
               <a class="btn btn-ghost" ${canDownload ? `href="/api/jobs/${job.id}/download?format=srt"` : "aria-disabled=true tabindex=-1 style=\"opacity:.45;pointer-events:none\""}>SRT</a>
               <button type="button" class="btn btn-danger btn-delete" ${canDelete ? "" : "disabled"}>Delete</button>

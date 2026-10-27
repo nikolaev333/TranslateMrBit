@@ -31,6 +31,16 @@ def _base_env() -> None:
     os.environ.setdefault("WORKER_POLL_INTERVAL_SECONDS", "0.2")
     # Tests run the worker inside the API process with a fake engine.
     os.environ.setdefault("RUN_EMBEDDED_WORKER", "true")
+    os.environ.setdefault("VOCABULARY_SEED_DEFAULTS", "false")
+    os.environ.setdefault("VOCABULARY_AUTO_ANALYZE", "true")
+    os.environ.setdefault("QUALITY_INCLUDE_AUDIO", "false")
+    os.environ.setdefault("QUALITY_AUTO_ANALYZE", "false")
+    # Smart Processing: do not gate tests on host RAM estimates
+    os.environ.setdefault("PROCESSING_ENFORCE_MEMORY_GATE", "false")
+    os.environ.setdefault("PROCESSING_ALLOW_UNSAFE_MODELS", "true")
+    os.environ.setdefault("SMART_PROCESSING_ENABLED", "true")
+    # Keep legacy failure tests deterministic; dedicated tests cover retries.
+    os.environ.setdefault("PROCESSING_MAX_RETRIES", "0")
 
 
 _base_env()
@@ -82,12 +92,14 @@ class FakeWhisperEngine:
         language: str,
         task: str = "transcribe",
         progress_callback: Callable[..., None] | None = None,
+        initial_prompt: str | None = None,
     ) -> dict[str, Any]:
         self.last_call = {
             "audio_path": str(audio_path),
             "model_name": model_name,
             "language": language,
             "task": task,
+            "initial_prompt": initial_prompt,
         }
         if progress_callback:
             progress_callback("Fake transcription in progress", 42.0)
@@ -197,6 +209,14 @@ async def client(monkeypatch, tmp_path):
             "WORKER_POLL_INTERVAL_SECONDS": "0.2",
             "RUN_EMBEDDED_WORKER": "true",
             "WHISPER_DEVICE": "cpu",
+            "VOCABULARY_SEED_DEFAULTS": "false",
+            "VOCABULARY_AUTO_ANALYZE": "true",
+            "QUALITY_INCLUDE_AUDIO": "false",
+            "QUALITY_AUTO_ANALYZE": "false",
+            "PROCESSING_ENFORCE_MEMORY_GATE": "false",
+            "PROCESSING_ALLOW_UNSAFE_MODELS": "true",
+            "SMART_PROCESSING_ENABLED": "true",
+            "PROCESSING_MAX_RETRIES": "0",
         }
     )
     get_settings.cache_clear()

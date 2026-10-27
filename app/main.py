@@ -19,7 +19,18 @@ from app.database import Database
 from app.device_info import configured_device_label
 from app.logging_setup import log_event, setup_logging
 from app.model_preload import ModelPreloader
-from app.routers import auth_routes, health, jobs, models, pages
+from app.routers import (
+    auth_routes,
+    health,
+    jobs,
+    models,
+    pages,
+    processing,
+    quality,
+    studio,
+    vocabulary,
+)
+from app.services.quality_runner import QualityAnalysisWorker
 
 logger = setup_logging("whisper_api")
 
@@ -52,6 +63,10 @@ async def lifespan(app: FastAPI):
 
     db = Database(settings.db_path)
     await db.connect()
+    if settings.vocabulary_seed_defaults:
+        seeded = await db.seed_default_vocabulary()
+        if seeded:
+            log_event(logger, "vocabulary_seeded", count=seeded)
     cleanup = UploadCleanupTask(db, auto_delete_days=settings.auto_delete_uploads_days)
     model_preloader = ModelPreloader(settings)
 
@@ -75,12 +90,19 @@ async def lifespan(app: FastAPI):
         await worker.start()
         log_event(logger, "embedded_worker_started")
 
+    quality_worker = QualityAnalysisWorker(db, settings)
+    app.state.quality_worker = quality_worker
+    await quality_worker.start()
+
     await cleanup.start()
     log_event(logger, "api_ready", version=__version__)
     try:
         yield
     finally:
         await cleanup.stop()
+        qw = getattr(app.state, "quality_worker", None)
+        if qw is not None:
+            await qw.stop()
         worker = getattr(app.state, "worker", None)
         if worker is not None:
             await worker.stop()
@@ -106,7 +128,11 @@ app.include_router(health.router)
 app.include_router(auth_routes.router)
 app.include_router(pages.router)
 app.include_router(jobs.router)
+app.include_router(studio.router)
+app.include_router(quality.router)
 app.include_router(models.router)
+app.include_router(vocabulary.router)
+app.include_router(processing.router)
 
 
 @app.exception_handler(HTTPException)

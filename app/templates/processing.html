@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Smart Processing · TranslateMrBit{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <a class="nav-link" href="/">Transcribe</a>
+  <a class="nav-link" href="/history">History</a>
+  <a class="nav-link" href="/vocabulary">Smart Vocabulary</a>
+  <a class="nav-link active" href="/processing">Smart Processing</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="btn btn-ghost">Log out</button>
+  </form>
+</nav>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <div>
+    <h1>MrBit Smart Processing</h1>
+    <p class="lede">Resource monitoring, queue control, model lifecycle, and measured processing analytics.</p>
+  </div>
+  <div class="toolbar-group">
+    <button type="button" class="btn btn-secondary" id="btn-refresh">Refresh</button>
+  </div>
+</section>
+
+<p class="alert alert-error" id="proc-error" hidden></p>
+
+<section class="panel">
+  <h2>System overview</h2>
+  <div class="qa-stats" id="sys-stats">
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-cpu">—</span><span class="qa-stat-label">CPU</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-mem">—</span><span class="qa-stat-label">Memory avail.</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-disk">—</span><span class="qa-stat-label">Disk free</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-gpu">—</span><span class="qa-stat-label">GPU</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-workers">—</span><span class="qa-stat-label">Workers</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-queue">—</span><span class="qa-stat-label">Queue</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-active">—</span><span class="qa-stat-label">Active</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-models">—</span><span class="qa-stat-label">Installed models</span></div>
+  </div>
+  <p class="muted small" id="sys-note"></p>
+</section>
+
+<section class="panel">
+  <div class="result-header">
+    <h2>Processing queue</h2>
+    <span class="muted small" id="queue-meta"></span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" id="queue-table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>File</th>
+          <th>Model</th>
+          <th>Backend</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Retries</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="queue-body">
+        <tr><td colspan="8" class="muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="studio-layout">
+  <div class="panel">
+    <h2>Model manager</h2>
+    <p class="muted small">Recommendations never silently swap your selection. Unsafe models require explicit confirmation.</p>
+    <div id="model-list" class="model-list"></div>
+    <div class="toolbar-group" style="margin-top:1rem">
+      <button type="button" class="btn btn-secondary" id="btn-recommend">Refresh recommendations</button>
+      <button type="button" class="btn btn-primary" id="btn-download">Queue downloads</button>
+    </div>
+    <pre class="wer-result" id="recommend-box" hidden></pre>
+  </div>
+  <aside class="panel">
+    <h2>Job details</h2>
+    <p class="muted small">Select a job from the queue. Progress is stage-based when percentages are unavailable.</p>
+    <dl class="meta-list" id="job-detail">
+      <div><dt>Job</dt><dd id="detail-id">—</dd></div>
+      <div><dt>Stage</dt><dd id="detail-stage">—</dd></div>
+      <div><dt>Backend</dt><dd id="detail-backend">—</dd></div>
+      <div><dt>Model</dt><dd id="detail-model">—</dd></div>
+      <div><dt>Queue wait</dt><dd id="detail-queue">—</dd></div>
+      <div><dt>Inference</dt><dd id="detail-inference">—</dd></div>
+      <div><dt>RTF</dt><dd id="detail-rtf">—</dd></div>
+      <div><dt>Peak memory</dt><dd id="detail-mem">—</dd></div>
+      <div><dt>Error</dt><dd id="detail-error">—</dd></div>
+    </dl>
+    <div class="toolbar-group">
+      <button type="button" class="btn btn-ghost" id="btn-cancel" disabled>Cancel</button>
+      <button type="button" class="btn btn-secondary" id="btn-retry" disabled>Retry</button>
+    </div>
+  </aside>
+</section>
+
+<section class="panel">
+  <h2>Measured performance</h2>
+  <p class="muted small">RTF = processing time / audio duration. Only completed jobs with measured timings are listed.</p>
+  <div class="table-wrap">
+    <table class="data-table" id="metrics-table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Model</th>
+          <th>Backend</th>
+          <th>Audio (s)</th>
+          <th>Total (s)</th>
+          <th>RTF</th>
+        </tr>
+      </thead>
+      <tbody id="metrics-body">
+        <tr><td colspan="6" class="muted">No measured runs yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/processing.js" defer></script>
+{% endblock %}

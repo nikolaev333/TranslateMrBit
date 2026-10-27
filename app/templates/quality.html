@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Quality Analyzer · TranslateMrBit{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <a class="nav-link" href="/">Transcribe</a>
+  <a class="nav-link" href="/history">History</a>
+  <a class="nav-link" href="/vocabulary">Smart Vocabulary</a>
+  <a class="nav-link active" href="/quality/{{ job_id }}">Quality</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="btn btn-ghost">Log out</button>
+  </form>
+</nav>
+{% endblock %}
+{% block content %}
+<section class="page-intro studio-intro">
+  <div>
+    <h1>MrBit Quality Analyzer</h1>
+    <p class="lede">Heuristic transcription diagnostics and human review. Warnings are indicators — not proof of errors.</p>
+  </div>
+  <div class="toolbar-group">
+    <button type="button" class="btn btn-primary" id="btn-analyze">Run analysis</button>
+    <a class="btn btn-secondary" id="link-studio" href="/studio/{{ job_id }}">Open Studio</a>
+    <a class="btn btn-ghost" id="link-report" href="#">Report JSON</a>
+  </div>
+</section>
+
+<p class="alert alert-error" id="quality-error" hidden></p>
+<p class="muted" id="quality-status">Loading…</p>
+
+<section class="panel" id="overview-panel">
+  <h2>Overview</h2>
+  <div class="qa-stats" id="qa-stats">
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-segments">—</span><span class="qa-stat-label">Segments analyzed</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-open">—</span><span class="qa-stat-label">Need review</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-rep">—</span><span class="qa-stat-label">Repetition</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-audio">—</span><span class="qa-stat-label">Audio</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-ts">—</span><span class="qa-stat-label">Timestamps</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-term">—</span><span class="qa-stat-label">Terminology</span></div>
+    <div class="qa-stat"><span class="qa-stat-value" id="stat-done">—</span><span class="qa-stat-label">Reviewed</span></div>
+  </div>
+  <p class="muted" id="priority-line"></p>
+</section>
+
+<section class="panel">
+  <h2>Analysis timeline</h2>
+  <div class="qa-timeline" id="qa-timeline" aria-label="Warning timeline"></div>
+  <p class="muted small">Click a marker to focus the matching warning. Open Studio to edit the segment when available.</p>
+</section>
+
+<section class="studio-layout">
+  <div class="panel">
+    <div class="result-header">
+      <h2>Review queue</h2>
+      <select id="filter-status" aria-label="Filter review status">
+        <option value="">All</option>
+        <option value="open">Open</option>
+        <option value="reviewed">Reviewed</option>
+        <option value="confirmed_error">Confirmed error</option>
+        <option value="false_positive">False positive</option>
+      </select>
+    </div>
+    <div id="review-queue" class="review-queue"></div>
+  </div>
+  <aside class="panel">
+    <h2>Reference evaluation</h2>
+    <p class="muted small">Optional. Paste a human-verified reference to measure WER/CER. Never invents scores.</p>
+    <label class="field">
+      <span>Reference transcript</span>
+      <textarea id="ref-text" class="result-text" rows="6" placeholder="SampleTranscript reference text…"></textarea>
+    </label>
+    <label class="field">
+      <span>Compare against</span>
+      <select id="ref-compare">
+        <option value="edited">Edited segments</option>
+        <option value="original">Original Whisper</option>
+        <option value="reviewed">Reviewed text</option>
+      </select>
+    </label>
+    <button type="button" class="btn btn-secondary" id="btn-evaluate">Calculate WER / CER</button>
+    <pre class="wer-result" id="eval-result" hidden></pre>
+  </aside>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.__QUALITY_JOB_ID__ = {{ job_id | tojson }};
+</script>
+<script src="/static/js/quality.js" defer></script>
+{% endblock %}

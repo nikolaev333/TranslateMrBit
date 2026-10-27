@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Transcription Studio · TranslateMrBit{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <a class="nav-link" href="/">Transcribe</a>
+  <a class="nav-link" href="/history">History</a>
+  <a class="nav-link" href="/vocabulary">Smart Vocabulary</a>
+  <a class="nav-link active" href="/studio/{{ job_id }}">Studio</a>
+  <a class="nav-link" href="/quality/{{ job_id }}">Quality</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="btn btn-ghost">Log out</button>
+  </form>
+</nav>
+{% endblock %}
+{% block content %}
+<section class="page-intro studio-intro">
+  <div>
+    <h1>MrBit Transcription Studio</h1>
+    <p class="lede" id="studio-subtitle">Audio-synchronized transcript editor</p>
+  </div>
+  <div class="studio-save-indicator" id="save-indicator" data-state="idle" aria-live="polite">Saved</div>
+</section>
+
+<section class="panel studio-player-panel" id="player-panel">
+  <audio id="studio-audio" preload="metadata"></audio>
+  <div class="player-toolbar">
+    <button type="button" class="btn btn-primary" id="btn-play" title="Play / Pause (Space)">Play</button>
+    <button type="button" class="btn btn-ghost" id="btn-back5" title="Back 5s (←)">−5s</button>
+    <button type="button" class="btn btn-ghost" id="btn-fwd5" title="Forward 5s (→)">+5s</button>
+    <label class="field field-inline rate-field">
+      <span>Speed</span>
+      <select id="playback-rate" title="Playback rate ([ / ])">
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+      </select>
+    </label>
+    <div class="player-time mono-cell">
+      <span id="time-current">0:00</span>
+      <span class="muted">/</span>
+      <span id="time-total">0:00</span>
+    </div>
+  </div>
+  <div class="player-timeline">
+    <input type="range" id="seek-bar" min="0" max="0" step="0.01" value="0" aria-label="Seek" />
+  </div>
+  <p class="alert alert-error" id="player-error" hidden></p>
+</section>
+
+<section class="studio-layout">
+  <div class="panel studio-editor-panel">
+    <div class="studio-toolbar">
+      <div class="toolbar-group">
+        <button type="button" class="btn btn-ghost" id="btn-undo" title="Undo">Undo</button>
+        <button type="button" class="btn btn-ghost" id="btn-redo" title="Redo">Redo</button>
+        <button type="button" class="btn btn-ghost" id="btn-restore" title="Restore selected segment">Restore</button>
+        <button type="button" class="btn btn-ghost" id="btn-split" title="Split at playhead">Split</button>
+        <button type="button" class="btn btn-ghost" id="btn-merge" title="Merge with next">Merge</button>
+      </div>
+      <div class="toolbar-group">
+        <label class="field field-inline search-field">
+          <span class="sr-only">Search</span>
+          <input type="search" id="studio-search" placeholder="Search transcript…" />
+        </label>
+        <button type="button" class="btn btn-ghost" id="btn-replace">Replace</button>
+        <label class="checkbox-field">
+          <input type="checkbox" id="auto-scroll" checked />
+          <span>Auto-scroll</span>
+        </label>
+      </div>
+      <div class="toolbar-group">
+        <select id="export-source" aria-label="Export source">
+          <option value="edited">Edited</option>
+          <option value="original">Original</option>
+        </select>
+        <a class="btn btn-secondary" id="export-txt" href="#">TXT</a>
+        <a class="btn btn-ghost" id="export-srt" href="#">SRT</a>
+        <a class="btn btn-ghost" id="export-vtt" href="#">VTT</a>
+        <a class="btn btn-ghost" id="export-json" href="#">JSON</a>
+      </div>
+    </div>
+    <p class="muted" id="segments-status-msg" hidden></p>
+    <div id="vocab-banner" class="vocab-banner" hidden></div>
+    <div class="segments-list" id="segments-list" role="list"></div>
+  </div>
+
+  <aside class="panel studio-revisions-panel">
+    <div class="result-header">
+      <h2>Revisions</h2>
+      <button type="button" class="btn btn-ghost" id="btn-refresh-revisions">Refresh</button>
+    </div>
+    <ul class="revisions-list" id="revisions-list">
+      <li class="muted">No revisions yet.</li>
+    </ul>
+  </aside>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.__STUDIO_JOB_ID__ = {{ job_id | tojson }};
+</script>
+<script src="/static/js/transcription-studio.js" defer></script>
+{% endblock %}

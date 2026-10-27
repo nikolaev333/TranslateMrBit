@@ -51,6 +51,56 @@ async def history_page(
     )
 
 
+@router.get("/vocabulary", response_class=HTMLResponse)
+async def vocabulary_page(
+    request: Request,
+    _: Annotated[None, Depends(require_auth)],
+):
+    templates = get_templates(request)
+    return templates.TemplateResponse(
+        "vocabulary.html",
+        {"request": request},
+    )
+
+
+@router.get("/studio/{job_id}", response_class=HTMLResponse)
+async def studio_page(
+    job_id: str,
+    request: Request,
+    _: Annotated[None, Depends(require_auth)],
+):
+    templates = get_templates(request)
+    return templates.TemplateResponse(
+        "studio.html",
+        {"request": request, "job_id": job_id},
+    )
+
+
+@router.get("/quality/{job_id}", response_class=HTMLResponse)
+async def quality_page(
+    job_id: str,
+    request: Request,
+    _: Annotated[None, Depends(require_auth)],
+):
+    templates = get_templates(request)
+    return templates.TemplateResponse(
+        "quality.html",
+        {"request": request, "job_id": job_id},
+    )
+
+
+@router.get("/processing", response_class=HTMLResponse)
+async def processing_page(
+    request: Request,
+    _: Annotated[None, Depends(require_auth)],
+):
+    templates = get_templates(request)
+    return templates.TemplateResponse(
+        "processing.html",
+        {"request": request},
+    )
+
+
 @router.get("/app", include_in_schema=False)
 async def app_alias(
     request: Request,

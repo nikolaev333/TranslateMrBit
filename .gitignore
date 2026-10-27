@@ -3,6 +3,17 @@
 .env.local
 *.pem
 *.key
+cookies.txt
+login.json
+*.session
+secrets/
+credentials*.json
+
+# Local helper scripts / scratch (do not commit production artifacts)
+check_jobs.py
+do_preload.py
+wait_and_preload.py
+preload_silence.wav
 
 # Python
 __pycache__/

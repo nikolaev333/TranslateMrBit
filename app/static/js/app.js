@@ -32,10 +32,27 @@
   const downloadSrt = document.getElementById("download-srt");
   const downloadVtt = document.getElementById("download-vtt");
   const downloadJson = document.getElementById("download-json");
+  const correctionsPanel = document.getElementById("corrections-panel");
+  const originalTextEl = document.getElementById("original-text");
+  const suggestedTextEl = document.getElementById("suggested-text");
+  const matchesList = document.getElementById("matches-list");
+  const correctionsEmpty = document.getElementById("corrections-empty");
+  const analyzeBtn = document.getElementById("analyze-btn");
+  const restoreOriginalBtn = document.getElementById("restore-original-btn");
+  const saveReviewedBtn = document.getElementById("save-reviewed-btn");
+  const downloadReviewed = document.getElementById("download-reviewed");
+  const referenceTextEl = document.getElementById("reference-text");
+  const werOriginalBtn = document.getElementById("wer-original-btn");
+  const werReviewedBtn = document.getElementById("wer-reviewed-btn");
+  const werResult = document.getElementById("wer-result");
+  const studioEntry = document.getElementById("studio-entry");
+  const openStudioLink = document.getElementById("open-studio-link");
 
   let selectedFile = null;
   let pollTimer = null;
   let currentJobId = null;
+  let currentAnalysis = null;
+  let matchDecisions = {};
   const ACTIVE_POLL_MS = 1000;
 
   function formatBytes(bytes) {
@@ -85,7 +102,13 @@
       job.cpu_percent == null || job.cpu_percent === ""
         ? null
         : Math.max(0, Math.min(100, Number(job.cpu_percent)));
-    const active = job.status === "queued" || job.status === "processing";
+    const active = [
+      "queued",
+      "waiting_for_resources",
+      "preparing",
+      "processing",
+      "finalizing",
+    ].includes(job.status);
     const done = job.status === "completed";
 
     if (!active && !done) {
@@ -169,6 +192,102 @@
     return data;
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function renderMatches(analysis) {
+    const matches = (analysis && analysis.matches) || [];
+    if (!matches.length) {
+      matchesList.innerHTML = "";
+      correctionsEmpty.hidden = false;
+      return;
+    }
+    correctionsEmpty.hidden = true;
+    matchesList.innerHTML = matches
+      .map((m, idx) => {
+        const decision = matchDecisions[idx] || { action: "accept" };
+        return `<div class="match-card" data-index="${idx}">
+          <div class="match-main">
+            <span class="match-from">${escapeHtml(m.matched_text)}</span>
+            <span class="match-arrow" aria-hidden="true">→</span>
+            <input class="match-to" data-index="${idx}" value="${escapeHtml(decision.replacement || m.correct)}" />
+            <span class="badge muted-badge">${escapeHtml(m.category || "")}</span>
+          </div>
+          <div class="match-actions">
+            <label><input type="radio" name="match-${idx}" value="accept" ${decision.action === "accept" ? "checked" : ""}/> Accept</label>
+            <label><input type="radio" name="match-${idx}" value="edit" ${decision.action === "edit" ? "checked" : ""}/> Edit</label>
+            <label><input type="radio" name="match-${idx}" value="reject" ${decision.action === "reject" ? "checked" : ""}/> Reject</label>
+          </div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function rebuildSuggestedFromDecisions() {
+    if (!currentAnalysis) return;
+    const original = currentAnalysis.original_text || "";
+    const matches = currentAnalysis.matches || [];
+    let out = "";
+    let cursor = 0;
+    matches.forEach((m, idx) => {
+      const d = matchDecisions[idx] || { action: "accept" };
+      if (m.start < cursor) return;
+      out += original.slice(cursor, m.start);
+      if (d.action === "reject") {
+        out += original.slice(m.start, m.end);
+      } else if (d.action === "edit") {
+        out += d.replacement || m.correct;
+      } else {
+        out += m.correct;
+      }
+      cursor = m.end;
+    });
+    out += original.slice(cursor);
+    suggestedTextEl.value = out;
+  }
+
+  function showCorrections(analysis, reviewedText) {
+    correctionsPanel.hidden = false;
+    currentAnalysis = analysis;
+    matchDecisions = {};
+    (analysis.matches || []).forEach((_, idx) => {
+      matchDecisions[idx] = { action: "accept" };
+    });
+    originalTextEl.value = analysis.original_text || "";
+    suggestedTextEl.value = reviewedText || analysis.suggested_text || analysis.original_text || "";
+    renderMatches(analysis);
+    if (reviewedText) {
+      downloadReviewed.hidden = false;
+      downloadReviewed.href = `/api/jobs/${currentJobId}/download-reviewed`;
+    } else {
+      downloadReviewed.hidden = true;
+    }
+  }
+
+  async function loadAnalysis(jobId, force) {
+    try {
+      const analysis = force
+        ? await fetchJson(`/api/jobs/${jobId}/analyze`, { method: "POST" })
+        : await fetchJson(`/api/jobs/${jobId}/analyze`).catch(async () =>
+            fetchJson(`/api/jobs/${jobId}/analyze`, { method: "POST" })
+          );
+      const result = await fetchJson(`/api/jobs/${jobId}/result`);
+      showCorrections(analysis, result.reviewed_text || null);
+    } catch (err) {
+      correctionsPanel.hidden = false;
+      correctionsEmpty.hidden = false;
+      correctionsEmpty.textContent = err.message || "Smart Vocabulary analysis unavailable";
+      matchesList.innerHTML = "";
+      originalTextEl.value = resultText.value || "";
+      suggestedTextEl.value = resultText.value || "";
+    }
+  }
+
   async function pollJob(jobId) {
     const job = await fetchJson(`/api/jobs/${jobId}`);
     showStatus(job);
@@ -178,7 +297,12 @@
       resultPanel.hidden = false;
       resultText.value = result.transcription_text || "";
       setDownloads(jobId, result.available_formats || ["txt"]);
+      if (studioEntry && openStudioLink) {
+        studioEntry.hidden = false;
+        openStudioLink.href = `/studio/${jobId}`;
+      }
       startBtn.disabled = !selectedFile;
+      await loadAnalysis(jobId, false);
       return;
     }
     if (job.status === "failed") {
@@ -219,13 +343,22 @@
     ensurePolling(jobId, ACTIVE_POLL_MS);
   }
 
-  function uploadJob(file, model, language) {
+  function uploadJob(file, model, language, extras = {}) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const data = new FormData();
       data.append("file", file);
       data.append("model", model);
       data.append("language", language);
+      if (extras.inference_backend) {
+        data.append("inference_backend", extras.inference_backend);
+      }
+      if (extras.priority != null && extras.priority !== "") {
+        data.append("priority", String(extras.priority));
+      }
+      if (extras.allow_unsafe_model) {
+        data.append("allow_unsafe_model", "true");
+      }
 
       xhr.open("POST", "/api/jobs");
       xhr.withCredentials = true;
@@ -302,15 +435,26 @@
 
     startBtn.disabled = true;
     resultPanel.hidden = true;
+    correctionsPanel.hidden = true;
+    if (studioEntry) studioEntry.hidden = true;
     resultText.value = "";
+    werResult.hidden = true;
     statusError.hidden = true;
     setUploadProgress(0, "Starting upload…");
 
     const model = document.getElementById("model-select").value;
     const language = document.getElementById("language-select").value;
+    const backendEl = document.getElementById("backend-select");
+    const priorityEl = document.getElementById("priority-input");
+    const unsafeEl = document.getElementById("allow-unsafe");
+    const extras = {
+      inference_backend: backendEl ? backendEl.value : "openai-whisper",
+      priority: priorityEl ? priorityEl.value : 100,
+      allow_unsafe_model: !!(unsafeEl && unsafeEl.checked),
+    };
 
     try {
-      const created = await uploadJob(selectedFile, model, language);
+      const created = await uploadJob(selectedFile, model, language, extras);
       setUploadProgress(100, "Upload complete · queued");
       showStatus({
         status: created.status,
@@ -348,5 +492,123 @@
         toast.hidden = true;
       }, 1800);
     }
+  });
+
+  matchesList.addEventListener("change", (e) => {
+    const radio = e.target.closest('input[type="radio"]');
+    if (!radio) return;
+    const idx = Number(radio.name.replace("match-", ""));
+    matchDecisions[idx] = matchDecisions[idx] || {};
+    matchDecisions[idx].action = radio.value;
+    const input = matchesList.querySelector(`input.match-to[data-index="${idx}"]`);
+    if (input) matchDecisions[idx].replacement = input.value;
+    rebuildSuggestedFromDecisions();
+  });
+
+  matchesList.addEventListener("input", (e) => {
+    const input = e.target.closest("input.match-to");
+    if (!input) return;
+    const idx = Number(input.getAttribute("data-index"));
+    matchDecisions[idx] = matchDecisions[idx] || { action: "edit" };
+    matchDecisions[idx].replacement = input.value;
+    if (matchDecisions[idx].action === "accept") {
+      matchDecisions[idx].action = "edit";
+      const editRadio = matchesList.querySelector(`input[name="match-${idx}"][value="edit"]`);
+      if (editRadio) editRadio.checked = true;
+    }
+    rebuildSuggestedFromDecisions();
+  });
+
+  analyzeBtn.addEventListener("click", () => {
+    if (!currentJobId) return;
+    loadAnalysis(currentJobId, true).catch((err) => {
+      statusError.hidden = false;
+      statusError.textContent = err.message;
+    });
+  });
+
+  restoreOriginalBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    await fetchJson(`/api/jobs/${currentJobId}/corrections`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ restore_original: true, decisions: [] }),
+    });
+    suggestedTextEl.value = originalTextEl.value;
+    downloadReviewed.hidden = true;
+    if (currentAnalysis) {
+      (currentAnalysis.matches || []).forEach((_, idx) => {
+        matchDecisions[idx] = { action: "reject" };
+      });
+      renderMatches(currentAnalysis);
+    }
+  });
+
+  saveReviewedBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    const decisions = Object.keys(matchDecisions).map((k) => {
+      const idx = Number(k);
+      const d = matchDecisions[idx];
+      return {
+        match_index: idx,
+        action: d.action || "reject",
+        replacement: d.replacement || null,
+      };
+    });
+    const saved = await fetchJson(`/api/jobs/${currentJobId}/corrections`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decisions,
+        reviewed_text: suggestedTextEl.value,
+      }),
+    });
+    suggestedTextEl.value = saved.reviewed_text;
+    downloadReviewed.hidden = false;
+    downloadReviewed.href = `/api/jobs/${currentJobId}/download-reviewed`;
+    toast.hidden = false;
+    toast.textContent = "Reviewed transcription saved";
+    setTimeout(() => {
+      toast.hidden = true;
+      toast.textContent = "Copied to clipboard";
+    }, 1800);
+  });
+
+  async function runWer(compareAgainst) {
+    if (!currentJobId) return;
+    const reference = (referenceTextEl.value || "").trim();
+    if (!reference) {
+      werResult.hidden = false;
+      werResult.textContent = "Paste a reference transcript first.";
+      return;
+    }
+    const data = await fetchJson(`/api/jobs/${currentJobId}/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reference_transcript: reference,
+        compare_against: compareAgainst,
+      }),
+    });
+    werResult.hidden = false;
+    werResult.textContent = [
+      `Compare: ${data.compare_against}`,
+      `WER: ${(data.wer * 100).toFixed(2)}% (${data.edits} edits / ${data.reference_words} ref words)`,
+      `Substitutions: ${data.substitutions} · Deletions: ${data.deletions} · Insertions: ${data.insertions}`,
+      `Suggestions accepted: ${data.suggestions_accepted} · rejected: ${data.suggestions_rejected}`,
+    ].join("\n");
+  }
+
+  werOriginalBtn.addEventListener("click", () => {
+    runWer("original").catch((err) => {
+      werResult.hidden = false;
+      werResult.textContent = err.message;
+    });
+  });
+  werReviewedBtn.addEventListener("click", () => {
+    runWer("reviewed").catch((err) => {
+      werResult.hidden = false;
+      werResult.textContent = err.message;
+    });
   });
 })();

@@ -3,17 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
+import socket
 import time
 import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.database import utc_now
+from app.inference.backend_registry import get_backend
 from app.logging_setup import log_event
-from app.models import JobStatus
+from app.models import JobStatus, SegmentsStatus
 from app.process_metrics import new_cpu_sampler, sample_process_cpu_percent
+from app.services.smart_processing.resource_monitor import collect_resources
+from app.services.smart_processing.scheduler import can_admit_job
+from app.services.smart_vocabulary import (
+    analysis_to_dict,
+    analyze_transcription,
+    build_initial_prompt,
+    term_from_row,
+)
+from app.services.transcript_segments import normalize_whisper_segments
 
 if TYPE_CHECKING:
     from app.config import Settings
@@ -39,6 +53,10 @@ class TranscriptionWorker:
             max_workers=max(1, settings.max_concurrent_jobs),
             thread_name_prefix="whisper-worker",
         )
+        self.worker_id = (
+            (settings.worker_id or "").strip()
+            or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        )
 
     async def start(self) -> None:
         recovered = await self.db.requeue_interrupted_jobs()
@@ -46,7 +64,7 @@ class TranscriptionWorker:
             log_event(logger, "interrupted_jobs_failed", count=recovered)
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="transcription-worker")
-        log_event(logger, "transcription_worker_started")
+        log_event(logger, "transcription_worker_started", worker_id=self.worker_id)
 
     async def stop(self) -> None:
         self._stop.set()
@@ -61,7 +79,17 @@ class TranscriptionWorker:
     async def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                job = await self.db.claim_next_job()
+                try:
+                    await self.db.upsert_worker_heartbeat(
+                        self.worker_id, status="idle", hostname=socket.gethostname()
+                    )
+                except Exception:
+                    logger.debug("heartbeat failed", exc_info=True)
+
+                job = await self.db.claim_next_job(
+                    worker_id=self.worker_id,
+                    max_concurrent=self.settings.max_concurrent_jobs,
+                )
                 if job is None:
                     try:
                         await asyncio.wait_for(
@@ -71,6 +99,48 @@ class TranscriptionWorker:
                     except asyncio.TimeoutError:
                         pass
                     continue
+
+                # Resource-aware admission after atomic claim.
+                if getattr(self.settings, "smart_processing_enabled", True):
+                    resources = collect_resources(
+                        upload_dir=self.settings.upload_dir,
+                        output_dir=self.settings.output_dir,
+                        model_dir=self.settings.whisper_model_dir,
+                    )
+                    decision = can_admit_job(
+                        job,
+                        running_count=0,
+                        max_concurrent=self.settings.max_concurrent_jobs,
+                        resources=resources,
+                        safety_margin_gb=self.settings.processing_safety_margin_gb,
+                        enforce_memory_gate=self.settings.processing_enforce_memory_gate
+                        and not bool(job.get("allow_unsafe_model")),
+                    )
+                    if not decision.admit and decision.code == "waiting_resources":
+                        await self.db.update_job(
+                            job["id"],
+                            status=JobStatus.WAITING_FOR_RESOURCES.value,
+                            progress_message=decision.reason,
+                            worker_id=None,
+                            processing_stage="waiting_for_resources",
+                        )
+                        await asyncio.sleep(2)
+                        continue
+                    if not decision.admit and decision.code == "cancelled":
+                        await self.db.update_job(
+                            job["id"],
+                            status=JobStatus.CANCELLED.value,
+                            progress_message="Cancelled",
+                            completed_at=utc_now(),
+                        )
+                        continue
+
+                await self.db.upsert_worker_heartbeat(
+                    self.worker_id,
+                    status="busy",
+                    current_job_id=job["id"],
+                    hostname=socket.gethostname(),
+                )
                 await self._process_job(job)
             except asyncio.CancelledError:
                 break
@@ -128,7 +198,39 @@ class TranscriptionWorker:
 
             fut.add_done_callback(_log_progress_error)
 
+        t0 = time.monotonic()
+        created = job.get("created_at")
+        queue_wait = None
         try:
+            if created:
+                # ISO timestamps — best-effort wait metric
+                from datetime import datetime
+
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                queue_wait = max(0.0, (datetime.now(created_dt.tzinfo) - created_dt).total_seconds())
+        except Exception:
+            queue_wait = None
+        model_load_sec = None
+        inference_sec = None
+        finalize_sec = None
+        backend_name = (
+            job.get("inference_backend")
+            or getattr(self.settings, "inference_backend", None)
+            or "openai-whisper"
+        )
+
+        try:
+            # Honour cancellation before heavy work
+            fresh = await self.db.get_job(job_id)
+            if fresh and fresh.get("cancel_requested"):
+                await self.db.update_job(
+                    job_id,
+                    status=JobStatus.CANCELLED.value,
+                    progress_message="Cancelled",
+                    completed_at=utc_now(),
+                )
+                return
+
             upload_path = job.get("upload_path") or ""
             if not upload_path or not Path(upload_path).is_file():
                 raise FileNotFoundError("Uploaded audio file is missing")
@@ -136,18 +238,58 @@ class TranscriptionWorker:
             language = job.get("language") or self.settings.whisper_language
             task = job.get("task") or "transcribe"
 
-            result = await loop.run_in_executor(
+            await self.db.update_job(
+                job_id,
+                status=JobStatus.PROCESSING.value,
+                processing_stage="inference",
+                progress_message="Transcribing",
+                queue_wait_seconds=queue_wait,
+            )
+
+            # Smart Vocabulary: build short terminology context for Whisper.
+            vocab_rows = await self.db.list_vocabulary_entries(
+                enabled=True, limit=500, offset=0
+            )
+            terms = [term_from_row(r) for r in vocab_rows]
+            initial_prompt = build_initial_prompt(
+                terms,
+                language=language,
+                max_chars=self.settings.vocabulary_prompt_max_chars,
+            )
+
+            backend = get_backend(backend_name, self.settings, whisper_engine=self.engine)
+            t_inf0 = time.monotonic()
+            tr = await loop.run_in_executor(
                 self._executor,
-                lambda: self.engine.transcribe(
+                lambda: backend.transcribe(
                     upload_path,
                     model_name=model_name,
                     language=language,
                     task=task,
                     progress_callback=progress,
+                    initial_prompt=initial_prompt,
                 ),
             )
+            inference_sec = time.monotonic() - t_inf0
+            result = tr.to_whisper_compat() if hasattr(tr, "to_whisper_compat") else tr
+
+            fresh = await self.db.get_job(job_id)
+            if fresh and fresh.get("cancel_requested"):
+                await self.db.update_job(
+                    job_id,
+                    status=JobStatus.CANCELLED.value,
+                    progress_message="Cancelled after inference",
+                    completed_at=utc_now(),
+                )
+                return
 
             progress("Writing output files", 97.0)
+            await self.db.update_job(
+                job_id,
+                status=JobStatus.FINALIZING.value,
+                processing_stage="finalizing",
+            )
+            t_fin0 = time.monotonic()
 
             output_dir = Path(self.settings.output_dir) / job_id
             paths = await loop.run_in_executor(
@@ -159,6 +301,43 @@ class TranscriptionWorker:
             txt_path = paths.get("txt")
             if txt_path and txt_path.is_file():
                 text = txt_path.read_text(encoding="utf-8")
+            finalize_sec = time.monotonic() - t_fin0
+
+            analysis_json = None
+            if self.settings.vocabulary_auto_analyze and text:
+                analysis = analyze_transcription(text, terms, language=language)
+                analysis_json = json.dumps(analysis_to_dict(analysis), ensure_ascii=False)
+
+            # Persist real Whisper timestamps for Transcription Studio.
+            segments, has_words = normalize_whisper_segments(result)
+            if segments:
+                await self.db.replace_job_segments(
+                    job_id,
+                    segments,
+                    has_word_timestamps=has_words,
+                    status=SegmentsStatus.READY.value,
+                )
+                segments_status = SegmentsStatus.READY.value
+            else:
+                await self.db.update_job(
+                    job_id,
+                    segments_status=SegmentsStatus.UNSUPPORTED.value,
+                    has_word_timestamps=0,
+                )
+                segments_status = SegmentsStatus.UNSUPPORTED.value
+
+            duration = _safe_float(result.get("duration"))
+            total_sec = time.monotonic() - t0
+            rtf = None
+            if duration and duration > 0:
+                rtf = total_sec / duration
+            peak_mem = None
+            try:
+                import psutil  # type: ignore
+
+                peak_mem = int(psutil.Process(os.getpid()).memory_info().rss)
+            except Exception:
+                peak_mem = None
 
             await self.db.update_job(
                 job_id,
@@ -169,14 +348,61 @@ class TranscriptionWorker:
                 error_message=None,
                 transcription_text=text,
                 detected_language=result.get("language"),
-                duration_seconds=_safe_float(result.get("duration")),
+                duration_seconds=duration,
                 output_txt_path=str(paths.get("txt") or ""),
                 output_srt_path=str(paths.get("srt") or ""),
                 output_vtt_path=str(paths.get("vtt") or ""),
                 output_json_path=str(paths.get("json") or ""),
+                vocabulary_prompt_used=initial_prompt,
+                vocabulary_analysis_json=analysis_json,
+                segments_status=segments_status,
+                inference_backend=backend_name,
+                model_load_seconds=model_load_sec,
+                inference_seconds=inference_sec,
+                finalize_seconds=finalize_sec,
+                queue_wait_seconds=queue_wait,
+                peak_memory_bytes=peak_mem,
+                realtime_factor=rtf,
+                processing_stage="completed",
                 completed_at=utc_now(),
             )
-            log_event(logger, "job_process_done", job_id=job_id, model=model_name)
+            try:
+                await self.db.save_processing_metrics(
+                    {
+                        "job_id": job_id,
+                        "model_name": model_name,
+                        "backend": backend_name,
+                        "audio_duration_sec": duration,
+                        "queue_wait_sec": queue_wait,
+                        "model_load_sec": model_load_sec,
+                        "inference_sec": inference_sec,
+                        "finalize_sec": finalize_sec,
+                        "total_sec": total_sec,
+                        "peak_memory_bytes": peak_mem,
+                        "realtime_factor": rtf,
+                    }
+                )
+            except Exception:
+                logger.debug("metrics save skipped", exc_info=True)
+            if getattr(self.settings, "quality_auto_analyze", False):
+                try:
+                    await self.db.create_quality_run(
+                        job_id,
+                        include_audio=bool(
+                            getattr(self.settings, "quality_include_audio", True)
+                        ),
+                    )
+                    log_event(logger, "quality_run_enqueued", job_id=job_id)
+                except Exception:
+                    logger.debug("quality enqueue skipped", exc_info=True)
+
+            log_event(
+                logger,
+                "job_process_done",
+                job_id=job_id,
+                model=model_name,
+                segments=len(segments),
+            )
         except Exception as exc:
             err = _safe_error_message(exc)
             log_event(
@@ -187,14 +413,41 @@ class TranscriptionWorker:
                 error=err,
             )
             logger.error("Job %s failed: %s\n%s", job_id, err, traceback.format_exc())
-            await self.db.update_job(
-                job_id,
-                status=JobStatus.FAILED.value,
-                progress_message="Failed",
-                cpu_percent=None,
-                error_message=err,
-                completed_at=utc_now(),
+            fresh = await self.db.get_job(job_id)
+            retry_count = int((fresh or {}).get("retry_count") or 0)
+            max_retries = int(
+                (fresh or {}).get("max_retries")
+                if fresh and fresh.get("max_retries") is not None
+                else getattr(self.settings, "processing_max_retries", 2)
             )
+            permanent = _is_permanent_failure(exc)
+            if (
+                not permanent
+                and retry_count < max_retries
+                and not (fresh or {}).get("cancel_requested")
+            ):
+                await self.db.update_job(
+                    job_id,
+                    status=JobStatus.QUEUED.value,
+                    progress_message=f"Re-queued after failure ({retry_count + 1}/{max_retries})",
+                    error_message=err,
+                    retry_count=retry_count + 1,
+                    worker_id=None,
+                    processing_stage="queued",
+                    started_at=None,
+                    completed_at=None,
+                    cpu_percent=None,
+                )
+            else:
+                await self.db.update_job(
+                    job_id,
+                    status=JobStatus.FAILED.value,
+                    progress_message="Failed",
+                    cpu_percent=None,
+                    error_message=err,
+                    completed_at=utc_now(),
+                    processing_stage="failed",
+                )
         finally:
             if self.settings.unload_model_after_job:
                 try:
@@ -211,6 +464,20 @@ def _safe_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _is_permanent_failure(exc: BaseException) -> bool:
+    """Deterministic failures that must not be retried indefinitely."""
+    if isinstance(exc, (FileNotFoundError, ValueError, PermissionError)):
+        return True
+    msg = str(exc).lower()
+    if "unsupported model" in msg or "unknown inference backend" in msg:
+        return True
+    if "corrupted" in msg or "invalid media" in msg:
+        return True
+    if "faster-whisper is not installed" in msg:
+        return True
+    return False
 
 
 def _safe_error_message(exc: BaseException) -> str:

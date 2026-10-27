@@ -18,6 +18,10 @@ python -m whisper audio.mp3 --language Bulgarian --task transcribe --output_form
 - Task: `transcribe` (not translate)
 - Outputs: TXT (plus SRT / VTT / JSON)
 - Single-user password auth, SQLite job queue, persistent volumes for uploads / outputs / DB / model weights
+- **MrBit Smart Vocabulary** — domain terminology, post-transcription suggestions, optional Whisper `initial_prompt`, WER evaluation (see [`docs/SMART_VOCABULARY.md`](docs/SMART_VOCABULARY.md))
+- **MrBit Transcription Studio** — audio-synced segment editor, revisions, Range audio streaming, timed exports (see [`docs/TRANSCRIPTION_STUDIO.md`](docs/TRANSCRIPTION_STUDIO.md))
+- **MrBit Quality Analyzer** — heuristic quality warnings, review workflow, optional WER/CER (see [`docs/QUALITY_ANALYZER.md`](docs/QUALITY_ANALYZER.md))
+- **MrBit Smart Processing Engine** — resource-aware scheduling, model recommendations, multi-backend inference, queue/recovery, processing dashboard (see [`docs/SMART_PROCESSING.md`](docs/SMART_PROCESSING.md))
 
 ---
 

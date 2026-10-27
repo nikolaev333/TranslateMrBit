@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Smart Vocabulary · TranslateMrBit{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <a class="nav-link" href="/">Transcribe</a>
+  <a class="nav-link" href="/history">History</a>
+  <a class="nav-link active" href="/vocabulary">Smart Vocabulary</a>
+  <a class="nav-link" href="/processing">Smart Processing</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="btn btn-ghost">Log out</button>
+  </form>
+</nav>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <h1>MrBit Smart Vocabulary</h1>
+  <p class="lede">Domain terminology for post-transcription corrections and optional Whisper context. Original Whisper transcripts are never overwritten.</p>
+</section>
+
+<section class="panel">
+  <div class="vocab-toolbar">
+    <div class="vocab-filters">
+      <label class="field field-inline">
+        <span>Search</span>
+        <input type="search" id="vocab-search" placeholder="RTP, Jackpot…" />
+      </label>
+      <label class="field field-inline">
+        <span>Language</span>
+        <select id="vocab-language-filter">
+          <option value="">All</option>
+        </select>
+      </label>
+      <label class="field field-inline">
+        <span>Category</span>
+        <select id="vocab-category-filter">
+          <option value="">All</option>
+        </select>
+      </label>
+      <label class="field field-inline checkbox-field">
+        <input type="checkbox" id="vocab-enabled-only" />
+        <span>Enabled only</span>
+      </label>
+    </div>
+    <button type="button" class="btn btn-primary" id="vocab-add-btn">Add term</button>
+  </div>
+  <p class="muted" id="vocab-count">Loading…</p>
+  <div id="vocab-error" class="alert alert-error" hidden></div>
+  <div class="table-wrap">
+    <table class="history-table" id="vocab-table">
+      <thead>
+        <tr>
+          <th>Correct</th>
+          <th>Alternatives</th>
+          <th>Language</th>
+          <th>Category</th>
+          <th>Enabled</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="vocab-body">
+        <tr><td colspan="6" class="muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<dialog id="vocab-dialog" class="dialog">
+  <form method="dialog" class="dialog-inner" id="vocab-form">
+    <header class="dialog-header">
+      <h2 id="vocab-dialog-title">Add terminology</h2>
+      <button type="submit" class="btn btn-ghost" value="cancel" aria-label="Close">Close</button>
+    </header>
+    <input type="hidden" id="vocab-edit-id" value="" />
+    <label class="field">
+      <span>Correct word or phrase</span>
+      <input type="text" id="vocab-correct" required maxlength="256" placeholder="RTP" />
+    </label>
+    <label class="field">
+      <span>Alternatives (comma-separated)</span>
+      <input type="text" id="vocab-alternatives" placeholder="ар ти пи, R T P, артипи" />
+    </label>
+    <div class="controls-grid">
+      <label class="field">
+        <span>Language</span>
+        <input type="text" id="vocab-language" value="Bulgarian" maxlength="64" />
+      </label>
+      <label class="field">
+        <span>Category</span>
+        <input type="text" id="vocab-category" value="iGaming" maxlength="64" list="vocab-category-list" />
+        <datalist id="vocab-category-list"></datalist>
+      </label>
+    </div>
+    <label class="field">
+      <span>Description</span>
+      <input type="text" id="vocab-description" maxlength="1024" placeholder="Optional note" />
+    </label>
+    <label class="field checkbox-field">
+      <input type="checkbox" id="vocab-enabled" checked />
+      <span>Enabled</span>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" id="vocab-save-btn">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/vocabulary.js" defer></script>
+{% endblock %}
