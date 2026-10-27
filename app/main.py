@@ -17,7 +17,8 @@ from app import __version__
 from app.cleanup import UploadCleanupTask
 from app.config import get_settings
 from app.database import Database
-from app.routers import auth_routes, health, jobs, pages
+from app.model_preload import ModelPreloader
+from app.routers import auth_routes, health, jobs, models, pages
 from app.whisper_engine import WhisperEngine
 from app.worker import TranscriptionWorker
 
@@ -50,12 +51,14 @@ async def lifespan(app: FastAPI):
     engine = WhisperEngine(settings)
     worker = TranscriptionWorker(db, engine, settings)
     cleanup = UploadCleanupTask(db, auto_delete_days=settings.auto_delete_uploads_days)
+    model_preloader = ModelPreloader(engine)
 
     app.state.settings = settings
     app.state.db = db
     app.state.engine = engine
     app.state.worker = worker
     app.state.cleanup = cleanup
+    app.state.model_preloader = model_preloader
     app.state.templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
     await worker.start()
@@ -92,6 +95,7 @@ app.include_router(health.router)
 app.include_router(auth_routes.router)
 app.include_router(pages.router)
 app.include_router(jobs.router)
+app.include_router(models.router)
 
 
 @app.exception_handler(HTTPException)

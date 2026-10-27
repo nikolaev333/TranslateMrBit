@@ -62,6 +62,52 @@ class WhisperEngine:
             return str(self.settings.whisper_fp16).lower() in {"1", "true", "yes", "on"}
         return self.device == "cuda"
 
+    def download_root(self) -> Path:
+        root = Path(self.settings.whisper_model_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def model_checkpoint_path(self, model_name: str) -> Path | None:
+        """Return on-disk checkpoint path if Whisper maps this name to a URL."""
+        self._import_deps()
+        models = getattr(self._whisper, "_MODELS", {}) or {}
+        url = models.get(model_name)
+        if not url:
+            return None
+        return self.download_root() / Path(str(url).split("/")[-1])
+
+    def is_model_downloaded(self, model_name: str) -> bool:
+        path = self.model_checkpoint_path(model_name)
+        return bool(path and path.is_file() and path.stat().st_size > 0)
+
+    def download_model_weights(self, model_name: str) -> Path:
+        """Download model weights to disk without loading them into RAM."""
+        self._import_deps()
+        models = getattr(self._whisper, "_MODELS", {}) or {}
+        if model_name not in models:
+            raise ValueError(f"Unknown Whisper model '{model_name}'")
+        download_root = str(self.download_root())
+        logger.info("Downloading Whisper weights '%s' -> %s", model_name, download_root)
+        path = self._whisper._download(models[model_name], download_root, in_memory=False)
+        logger.info("Downloaded Whisper weights '%s' -> %s", model_name, path)
+        return Path(path)
+
+    def list_model_download_status(self, names: tuple[str, ...] | list[str] | None = None) -> list[dict[str, Any]]:
+        names = list(names or SUPPORTED_MODELS)
+        out: list[dict[str, Any]] = []
+        for name in names:
+            path = self.model_checkpoint_path(name)
+            size = path.stat().st_size if path and path.is_file() else 0
+            out.append(
+                {
+                    "name": name,
+                    "downloaded": bool(path and path.is_file() and size > 0),
+                    "path": str(path) if path else None,
+                    "size_bytes": size,
+                }
+            )
+        return out
+
     def load_model(self, model_name: str | None = None) -> Any:
         name = model_name or self.settings.whisper_model
         if name not in SUPPORTED_MODELS and name not in {
@@ -83,8 +129,7 @@ class WhisperEngine:
             self._import_deps()
             device = self.detect_device()
             self._device = device
-            download_root = str(Path(self.settings.whisper_model_dir))
-            Path(download_root).mkdir(parents=True, exist_ok=True)
+            download_root = str(self.download_root())
 
             logger.info(
                 "Loading Whisper model '%s' on device=%s (download_root=%s)",
