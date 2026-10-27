@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Transcribe · Whisper AI{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <a class="nav-link active" href="/">Transcribe</a>
+  <a class="nav-link" href="/history">History</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="btn btn-ghost">Log out</button>
+  </form>
+</nav>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <h1>Transcribe</h1>
+  <p class="lede">Upload audio, run Whisper on this server, and download TXT (plus SRT / VTT / JSON).</p>
+</section>
+
+<section class="panel upload-panel" id="upload-panel">
+  <form id="job-form" class="job-form">
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload audio file">
+      <input type="file" id="file-input" name="file" accept="{% for e in allowed_extensions %}.{{ e }}{% if not loop.last %},{% endif %}{% endfor %},audio/*,video/*" hidden />
+      <div class="dropzone-inner">
+        <div class="dropzone-icon" aria-hidden="true"></div>
+        <p class="dropzone-title">Drop audio or video here</p>
+        <p class="dropzone-hint">or click to browse · max {{ max_upload_mb }} MB</p>
+        <p class="dropzone-formats">{{ allowed_extensions | join(', ') }}</p>
+      </div>
+    </div>
+
+    <div class="file-meta" id="file-meta" hidden>
+      <div>
+        <strong id="file-name">—</strong>
+        <span id="file-size" class="muted"></span>
+      </div>
+      <button type="button" class="btn btn-ghost" id="clear-file">Remove</button>
+    </div>
+
+    <div class="progress-track" id="upload-progress" hidden>
+      <div class="progress-bar" id="upload-progress-bar"></div>
+    </div>
+    <p class="progress-label muted" id="upload-progress-label" hidden></p>
+
+    <div class="controls-grid">
+      <label class="field">
+        <span>Model</span>
+        <select id="model-select" name="model">
+          {% for m in models %}
+          <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span>Language</span>
+        <select id="language-select" name="language">
+          {% for lang in languages %}
+          <option value="{{ lang }}" {% if lang == default_language %}selected{% endif %}>{{ lang }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-block" id="start-btn" disabled>
+      Start transcription
+    </button>
+  </form>
+</section>
+
+<section class="panel status-panel" id="status-panel" hidden>
+  <div class="status-header">
+    <h2>Job status</h2>
+    <span class="badge" id="status-badge">Queued</span>
+  </div>
+  <dl class="meta-list">
+    <div><dt>File</dt><dd id="status-filename">—</dd></div>
+    <div><dt>Model</dt><dd id="status-model">—</dd></div>
+    <div><dt>Language</dt><dd id="status-language">—</dd></div>
+    <div><dt>Progress</dt><dd id="status-progress">—</dd></div>
+  </dl>
+  <p class="alert alert-error" id="status-error" hidden></p>
+</section>
+
+<section class="panel result-panel" id="result-panel" hidden>
+  <div class="result-header">
+    <h2>Transcription</h2>
+    <div class="result-actions">
+      <button type="button" class="btn btn-secondary" id="copy-btn">Copy</button>
+      <a class="btn btn-secondary" id="download-txt" href="#">TXT</a>
+      <a class="btn btn-ghost" id="download-srt" href="#">SRT</a>
+      <a class="btn btn-ghost" id="download-vtt" href="#">VTT</a>
+      <a class="btn btn-ghost" id="download-json" href="#">JSON</a>
+    </div>
+  </div>
+  <textarea id="result-text" class="result-text" readonly rows="16" placeholder="Transcription will appear here…"></textarea>
+  <p class="toast" id="toast" hidden>Copied to clipboard</p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/app.js" defer></script>
+{% endblock %}

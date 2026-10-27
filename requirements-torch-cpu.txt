@@ -1,0 +1,4 @@
+# CPU PyTorch wheels (default for OVH / Coolify without NVIDIA GPU)
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+torchaudio==2.5.1

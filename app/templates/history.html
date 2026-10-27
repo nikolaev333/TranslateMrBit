@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}History · Whisper AI{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <a class="nav-link" href="/">Transcribe</a>
+  <a class="nav-link active" href="/history">History</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="btn btn-ghost">Log out</button>
+  </form>
+</nav>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <h1>History</h1>
+  <p class="lede">Previous transcription jobs on this server. Download results or delete jobs and their files.</p>
+</section>
+
+<section class="panel">
+  <div class="history-toolbar">
+    <p class="muted" id="history-count">Loading…</p>
+    <button type="button" class="btn btn-ghost" id="refresh-history">Refresh</button>
+  </div>
+  <div id="history-error" class="alert alert-error" hidden></div>
+  <div class="table-wrap">
+    <table class="history-table" id="history-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Status</th>
+          <th>Model</th>
+          <th>Language</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="history-body">
+        <tr><td colspan="6" class="muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<dialog id="view-dialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <header class="dialog-header">
+      <h2 id="dialog-title">Transcription</h2>
+      <button type="submit" class="btn btn-ghost" value="close" aria-label="Close">Close</button>
+    </header>
+    <textarea id="dialog-text" class="result-text" readonly rows="14"></textarea>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" id="dialog-copy">Copy</button>
+      <a class="btn btn-secondary" id="dialog-download" href="#">Download TXT</a>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/history.js" defer></script>
+{% endblock %}

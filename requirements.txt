@@ -1,0 +1,28 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+jinja2==3.1.5
+itsdangerous==2.2.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# Database
+aiosqlite==0.20.0
+
+# Build helpers (openai-whisper setup.py still needs pkg_resources)
+setuptools>=70,<81
+wheel>=0.44.0
+
+# Whisper (depends on torch — install CPU or CUDA torch separately; see README / Dockerfile)
+openai-whisper==20240930
+numpy==2.1.3
+
+# Utilities
+python-dotenv==1.0.1
+aiofiles==24.1.0
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.25.0
+httpx==0.28.1

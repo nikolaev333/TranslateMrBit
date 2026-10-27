@@ -1,0 +1,51 @@
+# Optional NVIDIA GPU image (requires NVIDIA Container Toolkit on the host).
+# Default production image remains Dockerfile (CPU).
+#
+# Build:
+#   docker build -f Dockerfile.gpu -t whisper-ai:gpu .
+#
+# Run with GPU (Compose example):
+#   deploy.resources.reservations.devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+#   environment: WHISPER_DEVICE=cuda
+
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    APP_HOME=/app \
+    DATA_DIR=/data \
+    UPLOAD_DIR=/data/uploads \
+    OUTPUT_DIR=/data/outputs \
+    DB_PATH=/data/db/whisper.db \
+    WHISPER_MODEL_DIR=/models \
+    HOME=/home/whisper \
+    WHISPER_DEVICE=cuda
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin whisper \
+    && mkdir -p /data/uploads /data/outputs /data/db /models \
+    && chown -R whisper:whisper /data /models /home/whisper
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install "setuptools>=70,<81" wheel \
+    && pip install --no-build-isolation -r /app/requirements.txt
+
+COPY --chown=whisper:whisper app /app/app
+
+USER whisper
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

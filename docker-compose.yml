@@ -1,0 +1,37 @@
+services:
+  whisper:
+    build: .
+    image: whisper-ai:latest
+    container_name: whisper-ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: production
+      APP_PORT: "8000"
+      DATA_DIR: /data
+      UPLOAD_DIR: /data/uploads
+      OUTPUT_DIR: /data/outputs
+      DB_PATH: /data/db/whisper.db
+      WHISPER_MODEL_DIR: /models
+      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-false}"
+    volumes:
+      - whisper_uploads:/data/uploads
+      - whisper_outputs:/data/outputs
+      - whisper_db:/data/db
+      - whisper_models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  whisper_uploads:
+  whisper_outputs:
+  whisper_db:
+  whisper_models:

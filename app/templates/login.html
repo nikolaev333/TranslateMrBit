@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Login · Whisper AI{% endblock %}
+{% block content %}
+<section class="login-shell">
+  <div class="login-panel">
+    <p class="eyebrow">Private access</p>
+    <h1 class="login-title">Whisper AI</h1>
+    <p class="lede">Sign in to upload audio and run Bulgarian transcriptions on your server.</p>
+    {% if error %}
+    <div class="alert alert-error" role="alert">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login" class="login-form" autocomplete="current-password">
+      <label class="field">
+        <span>Password</span>
+        <input type="password" name="password" required autofocus placeholder="Enter app password" />
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Log in</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
