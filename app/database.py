@@ -176,17 +176,24 @@ class Database:
             raise
 
     async def requeue_interrupted_jobs(self) -> int:
-        """Mark jobs left in processing after a crash as queued again."""
+        """Fail jobs left in processing after a crash.
+
+        Re-queueing can death-loop small VPS hosts when the interrupted job was
+        loading a large Whisper model into RAM. Operators can re-submit the job.
+        """
         now = utc_now()
         cursor = await self.conn.execute(
             """
             UPDATE jobs
-            SET status = ?, progress_message = ?, started_at = NULL, updated_at = ?
+            SET status = ?, progress_message = ?, error_message = ?,
+                completed_at = ?, updated_at = ?
             WHERE status = ?
             """,
             (
-                JobStatus.QUEUED.value,
-                "Requeued after application restart",
+                JobStatus.FAILED.value,
+                "Failed",
+                "Interrupted by application restart. Re-submit the job if needed.",
+                now,
                 now,
                 JobStatus.PROCESSING.value,
             ),
