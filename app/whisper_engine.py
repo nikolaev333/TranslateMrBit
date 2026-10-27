@@ -209,7 +209,7 @@ class WhisperEngine:
         progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         """Run transcription. Always uses task=transcribe unless explicitly overridden."""
-        _emit(progress_callback, f"Loading Whisper model '{model_name}'", LOAD_PERCENT)
+        _emit(progress_callback, f"Loading model '{model_name}'", LOAD_PERCENT)
 
         model = self.load_model(model_name)
 

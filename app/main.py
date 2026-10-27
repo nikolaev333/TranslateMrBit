@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Whisper AI Transcription",
+    title="MrBit Call AI",
     version=__version__,
     docs_url=None,
     redoc_url=None,
