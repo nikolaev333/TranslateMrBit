@@ -70,7 +70,12 @@ services:
       - whisper_outputs:/data/outputs
       - whisper_db:/data/db
       - whisper_models:/models
-    # No HEALTHCHECK / ports — worker may OOM on large models without taking down the API.
+    # Disable image HEALTHCHECK (curl :8000/health). Worker has no HTTP server.
+    # Without this override Docker inherits Dockerfile HEALTHCHECK → Unhealthy → Coolify Degraded.
+    healthcheck:
+      test: ["NONE"]
+    labels:
+      - coolify.exclude_from_hc=true
     command: ["python", "-m", "app.worker_main"]
 
 volumes:
