@@ -76,6 +76,27 @@
     <div><dt>Language</dt><dd id="status-language">—</dd></div>
     <div><dt>Progress</dt><dd id="status-progress">—</dd></div>
   </dl>
+  <div class="job-meters" id="job-meters" hidden>
+    <div class="meter">
+      <div class="meter-label-row">
+        <span>Transcription</span>
+        <span id="job-progress-pct">0%</span>
+      </div>
+      <div class="progress-track job-progress-track">
+        <div class="progress-bar" id="job-progress-bar"></div>
+      </div>
+      <p class="progress-label muted" id="job-progress-label"></p>
+    </div>
+    <div class="meter" id="cpu-meter" hidden>
+      <div class="meter-label-row">
+        <span>CPU (worker)</span>
+        <span id="job-cpu-pct">—</span>
+      </div>
+      <div class="progress-track cpu-progress-track">
+        <div class="progress-bar cpu-bar" id="job-cpu-bar"></div>
+      </div>
+    </div>
+  </div>
   <p class="alert alert-error" id="status-error" hidden></p>
 </section>
 

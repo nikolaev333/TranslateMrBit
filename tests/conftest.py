@@ -81,7 +81,7 @@ class FakeWhisperEngine:
         model_name: str,
         language: str,
         task: str = "transcribe",
-        progress_callback: Callable[[str], None] | None = None,
+        progress_callback: Callable[..., None] | None = None,
     ) -> dict[str, Any]:
         self.last_call = {
             "audio_path": str(audio_path),
@@ -90,7 +90,7 @@ class FakeWhisperEngine:
             "task": task,
         }
         if progress_callback:
-            progress_callback("Fake transcription in progress")
+            progress_callback("Fake transcription in progress", 42.0)
         if self.fail_next:
             self.fail_next = False
             raise RuntimeError("Simulated Whisper failure")

@@ -40,6 +40,8 @@ class JobResponse(BaseModel):
     task: str
     status: str
     progress_message: str | None = None
+    progress_percent: float | None = None
+    cpu_percent: float | None = None
     error_message: str | None = None
     detected_language: str | None = None
     duration_seconds: float | None = None
@@ -80,6 +82,15 @@ class OptionsResponse(BaseModel):
 DownloadFormat = Literal["txt", "srt", "vtt", "json"]
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def job_row_to_response(row: dict[str, Any]) -> JobResponse:
     return JobResponse(
         id=row["id"],
@@ -90,6 +101,8 @@ def job_row_to_response(row: dict[str, Any]) -> JobResponse:
         task=row["task"],
         status=row["status"],
         progress_message=row.get("progress_message"),
+        progress_percent=_optional_float(row.get("progress_percent")),
+        cpu_percent=_optional_float(row.get("cpu_percent")),
         error_message=row.get("error_message"),
         detected_language=row.get("detected_language"),
         duration_seconds=row.get("duration_seconds"),

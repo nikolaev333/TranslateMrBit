@@ -418,6 +418,30 @@ textarea {
   font-size: 0.85rem;
 }
 
+.job-meters {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.meter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.job-progress-track,
+.cpu-progress-track {
+  margin-top: 0;
+}
+
+.cpu-bar {
+  background: linear-gradient(90deg, #3d8bfd, #7dd3fc);
+}
+
 .controls-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

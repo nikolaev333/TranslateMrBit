@@ -28,7 +28,21 @@ class Database:
         await self._conn.execute("PRAGMA journal_mode=WAL;")
         await self._conn.execute("PRAGMA foreign_keys=ON;")
         await self._conn.executescript(SCHEMA_SQL)
+        await self._ensure_columns()
         await self._conn.commit()
+
+    async def _ensure_columns(self) -> None:
+        """Add columns introduced after the initial schema (existing prod DBs)."""
+        cursor = await self.conn.execute("PRAGMA table_info(jobs)")
+        rows = await cursor.fetchall()
+        existing = {row["name"] if isinstance(row, aiosqlite.Row) else row[1] for row in rows}
+        migrations = [
+            ("progress_percent", "ALTER TABLE jobs ADD COLUMN progress_percent REAL"),
+            ("cpu_percent", "ALTER TABLE jobs ADD COLUMN cpu_percent REAL"),
+        ]
+        for name, sql in migrations:
+            if name not in existing:
+                await self.conn.execute(sql)
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -55,6 +69,8 @@ class Database:
             "task": job.get("task", "transcribe"),
             "status": JobStatus.QUEUED.value,
             "progress_message": "Queued for transcription",
+            "progress_percent": 0.0,
+            "cpu_percent": None,
             "error_message": None,
             "transcription_text": None,
             "detected_language": None,
@@ -154,12 +170,15 @@ class Database:
             await self.conn.execute(
                 """
                 UPDATE jobs
-                SET status = ?, progress_message = ?, started_at = ?, updated_at = ?
+                SET status = ?, progress_message = ?, progress_percent = ?,
+                    cpu_percent = ?, started_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     JobStatus.PROCESSING.value,
                     "Loading model / starting transcription",
+                    1.0,
+                    None,
                     now,
                     now,
                     job["id"],
@@ -168,6 +187,8 @@ class Database:
             await self.conn.commit()
             job["status"] = JobStatus.PROCESSING.value
             job["progress_message"] = "Loading model / starting transcription"
+            job["progress_percent"] = 1.0
+            job["cpu_percent"] = None
             job["started_at"] = now
             job["updated_at"] = now
             return job

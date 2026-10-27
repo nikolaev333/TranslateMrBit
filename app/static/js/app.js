@@ -17,6 +17,13 @@
   const statusLanguage = document.getElementById("status-language");
   const statusProgress = document.getElementById("status-progress");
   const statusError = document.getElementById("status-error");
+  const jobMeters = document.getElementById("job-meters");
+  const jobProgressBar = document.getElementById("job-progress-bar");
+  const jobProgressPct = document.getElementById("job-progress-pct");
+  const jobProgressLabel = document.getElementById("job-progress-label");
+  const cpuMeter = document.getElementById("cpu-meter");
+  const jobCpuBar = document.getElementById("job-cpu-bar");
+  const jobCpuPct = document.getElementById("job-cpu-pct");
   const resultPanel = document.getElementById("result-panel");
   const resultText = document.getElementById("result-text");
   const copyBtn = document.getElementById("copy-btn");
@@ -29,6 +36,7 @@
   let selectedFile = null;
   let pollTimer = null;
   let currentJobId = null;
+  const ACTIVE_POLL_MS = 1000;
 
   function formatBytes(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -68,13 +76,54 @@
     statusBadge.className = `badge ${status}`;
   }
 
+  function showMeters(job) {
+    const pct =
+      job.progress_percent == null || job.progress_percent === ""
+        ? null
+        : Math.max(0, Math.min(100, Number(job.progress_percent)));
+    const cpu =
+      job.cpu_percent == null || job.cpu_percent === ""
+        ? null
+        : Math.max(0, Math.min(100, Number(job.cpu_percent)));
+    const active = job.status === "queued" || job.status === "processing";
+    const done = job.status === "completed";
+
+    if (!active && !done) {
+      jobMeters.hidden = true;
+      return;
+    }
+
+    jobMeters.hidden = false;
+    const displayPct = done ? 100 : pct == null ? (job.status === "queued" ? 0 : 1) : pct;
+    jobProgressBar.style.width = `${displayPct}%`;
+    jobProgressPct.textContent = `${Math.round(displayPct)}%`;
+    jobProgressLabel.textContent = job.progress_message || "";
+
+    if (active && cpu != null && !Number.isNaN(cpu)) {
+      cpuMeter.hidden = false;
+      jobCpuBar.style.width = `${cpu}%`;
+      jobCpuPct.textContent = `${Math.round(cpu)}%`;
+    } else if (done) {
+      cpuMeter.hidden = true;
+    } else {
+      cpuMeter.hidden = true;
+    }
+  }
+
   function showStatus(job) {
     statusPanel.hidden = false;
     setBadge(job.status);
     statusFilename.textContent = job.original_filename;
     statusModel.textContent = job.model_name;
     statusLanguage.textContent = job.language;
-    statusProgress.textContent = job.progress_message || "—";
+    const pct =
+      job.progress_percent == null ? null : Math.round(Number(job.progress_percent));
+    if (pct != null && !Number.isNaN(pct) && job.progress_message) {
+      statusProgress.textContent = `${pct}% · ${job.progress_message}`;
+    } else {
+      statusProgress.textContent = job.progress_message || "—";
+    }
+    showMeters(job);
     if (job.status === "failed" && job.error_message) {
       statusError.hidden = false;
       statusError.textContent = job.error_message;
@@ -124,8 +173,7 @@
     const job = await fetchJson(`/api/jobs/${jobId}`);
     showStatus(job);
     if (job.status === "completed") {
-      clearInterval(pollTimer);
-      pollTimer = null;
+      stopPolling();
       const result = await fetchJson(`/api/jobs/${jobId}/result`);
       resultPanel.hidden = false;
       resultText.value = result.transcription_text || "";
@@ -134,25 +182,41 @@
       return;
     }
     if (job.status === "failed") {
+      stopPolling();
+      startBtn.disabled = !selectedFile;
+      return;
+    }
+    // Keep a faster poll while the job is still active.
+    ensurePolling(jobId, ACTIVE_POLL_MS);
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
-      startBtn.disabled = !selectedFile;
     }
   }
 
-  function startPolling(jobId) {
-    currentJobId = jobId;
-    if (pollTimer) clearInterval(pollTimer);
-    pollJob(jobId).catch((err) => {
-      statusError.hidden = false;
-      statusError.textContent = err.message;
-    });
+  function ensurePolling(jobId, intervalMs) {
+    if (pollTimer && pollTimer._intervalMs === intervalMs) return;
+    stopPolling();
     pollTimer = setInterval(() => {
       pollJob(jobId).catch((err) => {
         statusError.hidden = false;
         statusError.textContent = err.message;
       });
-    }, 2000);
+    }, intervalMs);
+    pollTimer._intervalMs = intervalMs;
+  }
+
+  function startPolling(jobId) {
+    currentJobId = jobId;
+    stopPolling();
+    pollJob(jobId).catch((err) => {
+      statusError.hidden = false;
+      statusError.textContent = err.message;
+    });
+    ensurePolling(jobId, ACTIVE_POLL_MS);
   }
 
   function uploadJob(file, model, language) {
@@ -254,6 +318,8 @@
         model_name: created.model_name,
         language: created.language,
         progress_message: "Queued for transcription",
+        progress_percent: 0,
+        cpu_percent: null,
       });
       startPolling(created.id);
       setTimeout(hideUploadProgress, 1200);

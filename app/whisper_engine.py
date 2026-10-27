@@ -6,6 +6,7 @@ worker process actually downloads or loads a model.
 
 from __future__ import annotations
 
+import io
 import logging
 import threading
 from pathlib import Path
@@ -23,6 +24,34 @@ from app.model_disk import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Progress phases mapped onto 0–100 for the UI.
+LOAD_PERCENT = 5.0
+DECODE_START = 8.0
+DECODE_END = 95.0
+WRITE_PERCENT = 97.0
+
+ProgressCallback = Callable[..., None]
+
+
+def map_decode_fraction(fraction: float) -> float:
+    """Map Whisper audio-window fraction [0,1] onto decode phase percent."""
+    frac = max(0.0, min(1.0, float(fraction)))
+    return DECODE_START + frac * (DECODE_END - DECODE_START)
+
+
+def _emit(
+    callback: ProgressCallback | None,
+    message: str,
+    percent: float | None = None,
+) -> None:
+    if not callback:
+        return
+    try:
+        callback(message, percent)
+    except TypeError:
+        # Older one-arg callbacks (tests / legacy).
+        callback(message)
 
 
 class WhisperEngine:
@@ -177,23 +206,23 @@ class WhisperEngine:
         model_name: str,
         language: str,
         task: str = "transcribe",
-        progress_callback: Callable[[str], None] | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         """Run transcription. Always uses task=transcribe unless explicitly overridden."""
-        if progress_callback:
-            progress_callback(f"Loading Whisper model '{model_name}'")
+        _emit(progress_callback, f"Loading Whisper model '{model_name}'", LOAD_PERCENT)
 
         model = self.load_model(model_name)
 
         lang = None if language.lower() in {"auto", "detect", ""} else language
         fp16 = self.use_fp16()
 
-        if progress_callback:
-            device = self.device
-            progress_callback(
-                f"Transcribing on {device.upper()}"
-                + (" (FP16)" if fp16 else " (FP32)")
-            )
+        device = self.device
+        _emit(
+            progress_callback,
+            f"Transcribing on {device.upper()}"
+            + (" (FP16)" if fp16 else " (FP32)"),
+            DECODE_START,
+        )
 
         log_event(
             logger,
@@ -204,12 +233,13 @@ class WhisperEngine:
             device=self.device,
             audio=str(audio_path),
         )
-        result = model.transcribe(
+        result = self._transcribe_with_progress(
+            model,
             str(audio_path),
             language=lang,
             task=task,
             fp16=fp16,
-            verbose=False,
+            progress_callback=progress_callback,
         )
         log_event(
             logger,
@@ -219,10 +249,81 @@ class WhisperEngine:
             duration=result.get("duration"),
         )
 
-        if progress_callback:
-            progress_callback("Writing output files")
-
+        _emit(progress_callback, "Writing output files", WRITE_PERCENT)
         return result
+
+    def _transcribe_with_progress(
+        self,
+        model: Any,
+        audio_path: str,
+        *,
+        language: str | None,
+        task: str,
+        fp16: bool,
+        progress_callback: ProgressCallback | None,
+    ) -> dict[str, Any]:
+        """Call model.transcribe with a tqdm hook for real audio-window progress."""
+        import tqdm as tqdm_mod
+
+        whisper_transcribe_mod = None
+        try:
+            import whisper.transcribe as whisper_transcribe_mod  # type: ignore
+        except Exception:
+            whisper_transcribe_mod = None
+
+        last_reported = {"pct": -1.0}
+
+        class ProgressTqdm(tqdm_mod.tqdm):  # type: ignore[misc, name-defined]
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                # Force progress so Whisper's disable=(verbose is False) path still reports.
+                kwargs["disable"] = False
+                kwargs["file"] = io.StringIO()
+                super().__init__(*args, **kwargs)
+                self._report()
+
+            def update(self, n: float | int = 1) -> Any:
+                result = super().update(n)
+                self._report()
+                return result
+
+            def _report(self) -> None:
+                total = getattr(self, "total", None) or 0
+                n = getattr(self, "n", 0) or 0
+                if not total:
+                    return
+                frac = min(1.0, float(n) / float(total))
+                pct = map_decode_fraction(frac)
+                if pct - last_reported["pct"] < 0.5 and frac < 1.0:
+                    return
+                last_reported["pct"] = pct
+                _emit(
+                    progress_callback,
+                    f"Transcribing… {int(round(frac * 100))}%",
+                    pct,
+                )
+
+        # Patch both the package and the module Whisper already imported.
+        originals: list[tuple[Any, str, Any]] = []
+        targets = [(tqdm_mod, "tqdm")]
+        if whisper_transcribe_mod is not None and hasattr(whisper_transcribe_mod, "tqdm"):
+            targets.append((whisper_transcribe_mod, "tqdm"))
+
+        for obj, attr in targets:
+            originals.append((obj, attr, getattr(obj, attr)))
+            setattr(obj, attr, ProgressTqdm)
+
+        try:
+            # verbose=None → Whisper enables tqdm (disable = verbose is False → False).
+            return model.transcribe(
+                audio_path,
+                language=language,
+                task=task,
+                fp16=fp16,
+                verbose=None,
+            )
+        finally:
+            for obj, attr, original in originals:
+                setattr(obj, attr, original)
 
     def write_outputs(
         self,

@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     task TEXT NOT NULL DEFAULT 'transcribe',
     status TEXT NOT NULL,
     progress_message TEXT,
+    progress_percent REAL,
+    cpu_percent REAL,
     error_message TEXT,
     transcription_text TEXT,
     detected_language TEXT,

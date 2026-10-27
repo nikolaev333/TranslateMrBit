@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import TYPE_CHECKING
 from app.database import utc_now
 from app.logging_setup import log_event
 from app.models import JobStatus
+from app.process_metrics import new_cpu_sampler, sample_process_cpu_percent
 
 if TYPE_CHECKING:
     from app.config import Settings
@@ -87,16 +89,44 @@ class TranscriptionWorker:
             filename=job.get("original_filename"),
         )
         loop = asyncio.get_running_loop()
+        cpu_state = new_cpu_sampler()
+        throttle = {"t": 0.0, "pct": -1.0}
 
-        def progress(message: str) -> None:
+        def progress(message: str, percent: float | None = None) -> None:
+            now = time.monotonic()
+            cpu = sample_process_cpu_percent(cpu_state)
+            pct_value = None if percent is None else max(0.0, min(100.0, float(percent)))
+            should = (
+                pct_value is None
+                or throttle["pct"] < 0
+                or abs(pct_value - throttle["pct"]) >= 1.0
+                or now - throttle["t"] >= 1.0
+                or pct_value >= 99.0
+            )
+            if not should:
+                return
+            throttle["t"] = now
+            if pct_value is not None:
+                throttle["pct"] = pct_value
+            fields: dict = {"progress_message": message}
+            if pct_value is not None:
+                fields["progress_percent"] = pct_value
+            if cpu is not None:
+                fields["cpu_percent"] = round(cpu, 1)
+            # Fire-and-forget: never block the worker thread waiting on the
+            # event loop (that loop is awaiting this same executor).
             fut = asyncio.run_coroutine_threadsafe(
-                self.db.update_job(job_id, progress_message=message),
+                self.db.update_job(job_id, **fields),
                 loop,
             )
-            try:
-                fut.result(timeout=5)
-            except Exception:
-                logger.debug("Progress update failed for %s", job_id)
+
+            def _log_progress_error(done) -> None:
+                try:
+                    done.result()
+                except Exception:
+                    logger.debug("Progress update failed for %s", job_id, exc_info=True)
+
+            fut.add_done_callback(_log_progress_error)
 
         try:
             upload_path = job.get("upload_path") or ""
@@ -117,6 +147,8 @@ class TranscriptionWorker:
                 ),
             )
 
+            progress("Writing output files", 97.0)
+
             output_dir = Path(self.settings.output_dir) / job_id
             paths = await loop.run_in_executor(
                 self._executor,
@@ -132,6 +164,8 @@ class TranscriptionWorker:
                 job_id,
                 status=JobStatus.COMPLETED.value,
                 progress_message="Completed",
+                progress_percent=100.0,
+                cpu_percent=None,
                 error_message=None,
                 transcription_text=text,
                 detected_language=result.get("language"),
@@ -157,6 +191,7 @@ class TranscriptionWorker:
                 job_id,
                 status=JobStatus.FAILED.value,
                 progress_message="Failed",
+                cpu_percent=None,
                 error_message=err,
                 completed_at=utc_now(),
             )
