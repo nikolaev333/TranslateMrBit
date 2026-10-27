@@ -1,24 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Smart Processing · TranslateMrBit{% endblock %}
-{% block nav %}
-<nav class="nav">
-  <a class="nav-link" href="/">Transcribe</a>
-  <a class="nav-link" href="/history">History</a>
-  <a class="nav-link" href="/vocabulary">Smart Vocabulary</a>
-  <a class="nav-link active" href="/processing">Smart Processing</a>
-  <form method="post" action="/logout" class="inline-form">
-    <button type="submit" class="btn btn-ghost">Log out</button>
-  </form>
-</nav>
+{% block nav_active %}processing{% endblock %}
+{% block page_heading %}Smart Processing{% endblock %}
+{% block header_actions %}
+<button type="button" class="btn btn-secondary" id="btn-refresh">Refresh</button>
 {% endblock %}
 {% block content %}
 <section class="page-intro">
   <div>
+    <p class="eyebrow">Orchestration</p>
     <h1>MrBit Smart Processing</h1>
     <p class="lede">Resource monitoring, queue control, model lifecycle, and measured processing analytics.</p>
-  </div>
-  <div class="toolbar-group">
-    <button type="button" class="btn btn-secondary" id="btn-refresh">Refresh</button>
   </div>
 </section>
 

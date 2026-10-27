@@ -8,29 +8,58 @@
   <title>{% block title %}TranslateMrBit{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css" />
   {% block head %}{% endblock %}
 </head>
-<body>
+<body class="app-body {% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <div class="bg-grid" aria-hidden="true"></div>
   <div class="bg-glow" aria-hidden="true"></div>
-  <header class="topbar">
-    <a class="brand" href="/">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <span class="brand-copy">
-        <span class="brand-text">TranslateMrBit</span>
-        <span class="brand-tagline">Private AI Transcription Platform</span>
-      </span>
-    </a>
-    {% block nav %}{% endblock %}
-  </header>
-  <main class="main">
-    {% block content %}{% endblock %}
-  </main>
-  <footer class="footer">
-    <span>TranslateMrBit · Private AI Transcription Platform</span>
-  </footer>
+  {% set active %}{% block nav_active %}overview{% endblock %}{% endset %}
+  {% block shell %}
+  <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+  <div class="app-shell">
+    <aside class="app-sidebar" id="app-sidebar" aria-label="Primary">
+      <a class="sidebar-brand" href="/">
+        <img src="/static/img/brand-mark.svg" width="42" height="42" alt="" />
+        <span class="brand-copy">
+          <span class="brand-text">TranslateMrBit</span>
+          <span class="brand-tagline">AI Transcription Platform</span>
+        </span>
+      </a>
+      <nav class="sidebar-nav">
+        <a class="nav-link {% if active == 'overview' %}active{% endif %}" href="/"><span class="nav-ico" aria-hidden="true"></span>Overview</a>
+        <a class="nav-link {% if active == 'transcribe' %}active{% endif %}" href="/transcribe"><span class="nav-ico" aria-hidden="true"></span>New Transcription</a>
+        <a class="nav-link {% if active == 'history' %}active{% endif %}" href="/history"><span class="nav-ico" aria-hidden="true"></span>Transcription History</a>
+        <a class="nav-link {% if active == 'vocabulary' %}active{% endif %}" href="/vocabulary"><span class="nav-ico" aria-hidden="true"></span>Smart Vocabulary</a>
+        <a class="nav-link {% if active == 'studio' %}active{% endif %}{% if not job_id %} disabled{% endif %}" href="{% if job_id %}/studio/{{ job_id }}{% else %}#{% endif %}" {% if not job_id %}aria-disabled="true" title="Open from a completed job"{% endif %}><span class="nav-ico" aria-hidden="true"></span>Transcription Studio</a>
+        <a class="nav-link {% if active == 'quality' %}active{% endif %}{% if not job_id %} disabled{% endif %}" href="{% if job_id %}/quality/{{ job_id }}{% else %}#{% endif %}" {% if not job_id %}aria-disabled="true" title="Open from a completed job"{% endif %}><span class="nav-ico" aria-hidden="true"></span>Quality Analyzer</a>
+        <a class="nav-link {% if active == 'processing' %}active{% endif %}" href="/processing"><span class="nav-ico" aria-hidden="true"></span>Smart Processing</a>
+        <a class="nav-link {% if active == 'settings' %}active{% endif %}" href="/settings"><span class="nav-ico" aria-hidden="true"></span>Settings</a>
+      </nav>
+      <div class="sidebar-foot">
+        <form method="post" action="/logout" class="inline-form">
+          <button type="submit" class="btn btn-ghost btn-block">Log out</button>
+        </form>
+      </div>
+    </aside>
+    <div class="app-main">
+      <header class="app-header">
+        <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="app-sidebar" aria-expanded="false">Menu</button>
+        <h1>{% block page_heading %}TranslateMrBit{% endblock %}</h1>
+        <div class="toolbar-group">{% block header_actions %}{% endblock %}</div>
+      </header>
+      <main class="main" id="main-content">
+        {% block content %}{% endblock %}
+      </main>
+      <footer class="footer">
+        <span>TranslateMrBit · AI Transcription Platform</span>
+      </footer>
+    </div>
+  </div>
+  {% endblock %}
+  <script src="/static/js/shell.js" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

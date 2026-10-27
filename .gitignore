@@ -57,3 +57,6 @@ models/*
 # Test artifacts
 /tmp/
 *.log
+
+.tmp_ui_db/
+

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="wave" x1="0" y1="0" x2="720" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00C8F8"/>
+      <stop offset=".45" stop-color="#8539FF"/>
+      <stop offset="1" stop-color="#E43CF5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="45%" r="55%">
+      <stop stop-color="#8539FF" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#080D20" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="720" height="420" fill="#080D20"/>
+  <ellipse cx="360" cy="200" rx="280" ry="140" fill="url(#glow)"/>
+  <g stroke="url(#wave)" stroke-linecap="round" opacity=".95">
+    <path d="M40 210 C90 120, 140 300, 190 210 S290 120, 340 210 440 300, 490 210 590 120, 640 210 690 280, 700 210" stroke-width="3"/>
+    <path d="M40 210 C95 150, 145 270, 195 210 S295 150, 345 210 445 270, 495 210 595 150, 645 210 695 250, 700 210" stroke-width="2" opacity=".55"/>
+    <path d="M40 210 C100 180, 150 240, 200 210 S300 180, 350 210 450 240, 500 210 600 180, 650 210 690 230, 700 210" stroke-width="1.5" opacity=".35"/>
+  </g>
+  <g fill="#00C8F8" opacity=".55">
+    <circle cx="190" cy="210" r="3"/><circle cx="340" cy="210" r="3"/><circle cx="490" cy="210" r="3"/><circle cx="640" cy="210" r="3"/>
+  </g>
+</svg>

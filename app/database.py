@@ -239,6 +239,13 @@ class Database:
         row = await cursor.fetchone()
         return int(row["c"]) if row else 0
 
+    async def count_jobs_by_status(self) -> dict[str, int]:
+        cursor = await self.conn.execute(
+            "SELECT status, COUNT(*) AS c FROM jobs GROUP BY status"
+        )
+        rows = await cursor.fetchall()
+        return {str(r["status"]): int(r["c"]) for r in rows}
+
     async def update_job(self, job_id: str, **fields: Any) -> dict[str, Any] | None:
         if not fields:
             return await self.get_job(job_id)

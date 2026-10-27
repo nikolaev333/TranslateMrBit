@@ -88,10 +88,12 @@
 
   async function loadHistory() {
     errorEl.hidden = true;
-    countEl.textContent = "Loading…";
+    if (countEl) countEl.textContent = "Loading…";
     try {
       const data = await fetchJson("/api/jobs?limit=100");
-      countEl.textContent = `${data.total} job${data.total === 1 ? "" : "s"}`;
+      if (countEl) {
+        countEl.textContent = `${data.total} job${data.total === 1 ? "" : "s"}`;
+      }
       renderRows(data.jobs || []);
     } catch (err) {
       errorEl.hidden = false;
@@ -130,15 +132,17 @@
     }
   });
 
-  dialogCopy.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(dialogText.value || "");
-    } catch (_) {
-      dialogText.select();
-      document.execCommand("copy");
-    }
-  });
+  if (dialogCopy && dialogText) {
+    dialogCopy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(dialogText.value || "");
+      } catch (_) {
+        dialogText.select();
+        document.execCommand("copy");
+      }
+    });
+  }
 
-  refreshBtn.addEventListener("click", loadHistory);
+  if (refreshBtn) refreshBtn.addEventListener("click", loadHistory);
   loadHistory();
 })();

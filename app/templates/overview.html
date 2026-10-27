@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Overview · TranslateMrBit{% endblock %}
+{% block nav_active %}overview{% endblock %}
+{% block page_heading %}Overview{% endblock %}
+{% block header_actions %}
+<a class="btn btn-primary" href="/transcribe">New Transcription</a>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <p class="eyebrow">Dashboard</p>
+  <h1>TranslateMrBit</h1>
+  <p class="lede">Operational snapshot of transcription jobs on this server. Counts are live from the local database — never invented.</p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="/transcribe">Start transcription</a>
+    <a class="btn btn-secondary" href="/processing">Open Smart Processing</a>
+  </div>
+</section>
+
+<section class="stats-grid" aria-label="Job statistics">
+  <article class="stat-card">
+    <div class="stat-value">{{ stats.total }}</div>
+    <div class="stat-label">Total jobs</div>
+  </article>
+  <article class="stat-card">
+    <div class="stat-value">{{ stats.completed }}</div>
+    <div class="stat-label">Completed</div>
+  </article>
+  <article class="stat-card">
+    <div class="stat-value">{{ stats.processing }}</div>
+    <div class="stat-label">In progress</div>
+  </article>
+  <article class="stat-card">
+    <div class="stat-value">{{ stats.failed }}</div>
+    <div class="stat-label">Failed</div>
+  </article>
+</section>
+
+<section class="studio-layout">
+  <div class="panel">
+    <h2>Storage &amp; models</h2>
+    <dl class="meta-list">
+      <div><dt>Uploads</dt><dd id="ov-uploads">{{ storage.uploads_label }}</dd></div>
+      <div><dt>Outputs</dt><dd id="ov-outputs">{{ storage.outputs_label }}</dd></div>
+      <div><dt>Models on disk</dt><dd id="ov-models">{{ storage.models_label }}</dd></div>
+      <div><dt>Default model</dt><dd>{{ default_model }}</dd></div>
+      <div><dt>Device</dt><dd>{{ device_label }}</dd></div>
+    </dl>
+    <p class="muted small">Disk figures are measured when available; unavailable metrics show as unknown.</p>
+  </div>
+  <div class="panel">
+    <h2>Quick links</h2>
+    <div class="hero-actions">
+      <a class="btn btn-secondary" href="/history">History</a>
+      <a class="btn btn-secondary" href="/vocabulary">Smart Vocabulary</a>
+      <a class="btn btn-secondary" href="/settings">Settings</a>
+    </div>
+    <p class="muted small" style="margin-top:1rem">Transcription Studio and Quality Analyzer open from a completed job in History.</p>
+  </div>
+</section>
+{% endblock %}

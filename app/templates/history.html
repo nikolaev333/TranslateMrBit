@@ -1,30 +1,22 @@
 {% extends "base.html" %}
 {% block title %}History · TranslateMrBit{% endblock %}
-{% block nav %}
-<nav class="nav">
-  <a class="nav-link" href="/">Transcribe</a>
-  <a class="nav-link active" href="/history">History</a>
-  <a class="nav-link" href="/vocabulary">Smart Vocabulary</a>
-  <a class="nav-link" href="/processing">Smart Processing</a>
-  <form method="post" action="/logout" class="inline-form">
-    <button type="submit" class="btn btn-ghost">Log out</button>
-  </form>
-</nav>
-{% endblock %}
+{% block nav_active %}history{% endblock %}
+{% block page_heading %}Transcription History{% endblock %}
 {% block content %}
 <section class="page-intro">
-  <h1>History</h1>
-  <p class="lede">Previous transcription jobs on this server. Download results or delete jobs and their files.</p>
+  <p class="eyebrow">Archive</p>
+  <h1>Transcription History</h1>
+  <p class="lede">Previous jobs on this server. Download results, open Studio / Quality, or delete jobs and their files.</p>
 </section>
 
 <section class="panel">
   <div class="history-toolbar">
-    <p class="muted" id="history-count">Loading…</p>
-    <button type="button" class="btn btn-ghost" id="refresh-history">Refresh</button>
+    <button type="button" class="btn btn-secondary" id="refresh-history">Refresh</button>
+    <span class="muted" id="history-count">—</span>
   </div>
-  <div id="history-error" class="alert alert-error" hidden></div>
+  <p class="alert alert-error" id="history-error" hidden></p>
   <div class="table-wrap">
-    <table class="history-table" id="history-table">
+    <table class="data-table" id="history-table">
       <thead>
         <tr>
           <th>File</th>
@@ -32,7 +24,7 @@
           <th>Model</th>
           <th>Language</th>
           <th>Created</th>
-          <th>Actions</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="history-body">
@@ -42,18 +34,16 @@
   </div>
 </section>
 
-<dialog id="view-dialog" class="dialog">
-  <form method="dialog" class="dialog-inner">
-    <header class="dialog-header">
-      <h2 id="dialog-title">Transcription</h2>
-      <button type="submit" class="btn btn-ghost" value="close" aria-label="Close">Close</button>
-    </header>
-    <textarea id="dialog-text" class="result-text" readonly rows="14"></textarea>
-    <div class="dialog-actions">
-      <button type="button" class="btn btn-secondary" id="dialog-copy">Copy</button>
-      <a class="btn btn-secondary" id="dialog-download" href="#">Download TXT</a>
-    </div>
-  </form>
+<dialog id="view-dialog" class="panel" style="max-width:min(720px,92vw);border:1px solid var(--border);background:var(--bg-card);color:var(--text);border-radius:18px;">
+  <div class="result-header">
+    <h2 id="dialog-title">Transcription</h2>
+    <form method="dialog"><button class="btn btn-ghost">Close</button></form>
+  </div>
+  <textarea id="dialog-text" class="result-text" rows="14" readonly></textarea>
+  <div class="toolbar-group" style="margin-top:0.75rem">
+    <button type="button" class="btn btn-secondary" id="dialog-copy">Copy</button>
+    <a class="btn btn-primary" id="dialog-download" href="#">Download TXT</a>
+  </div>
 </dialog>
 {% endblock %}
 {% block scripts %}

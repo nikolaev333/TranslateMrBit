@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Settings · TranslateMrBit{% endblock %}
+{% block nav_active %}settings{% endblock %}
+{% block page_heading %}Settings{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <p class="eyebrow">Configuration</p>
+  <h1>Settings</h1>
+  <p class="lede">Read-only view of configured runtime defaults for this deployment. Secrets are never shown.</p>
+</section>
+<section class="panel">
+  <h2>Runtime</h2>
+  <dl class="meta-list">
+    <div><dt>Default model</dt><dd>{{ default_model }}</dd></div>
+    <div><dt>Default language</dt><dd>{{ default_language }}</dd></div>
+    <div><dt>Device</dt><dd>{{ device_label }}</dd></div>
+    <div><dt>Inference backend</dt><dd>{{ inference_backend }}</dd></div>
+    <div><dt>Max upload</dt><dd>{{ max_upload_mb }} MB</dd></div>
+    <div><dt>Max concurrent jobs</dt><dd>{{ max_concurrent_jobs }}</dd></div>
+    <div><dt>Smart Processing</dt><dd>{{ 'enabled' if smart_processing else 'disabled' }}</dd></div>
+  </dl>
+  <p class="muted small">Change these via environment variables / Coolify — not from this UI.</p>
+</section>
+{% endblock %}

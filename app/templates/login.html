@@ -1,21 +1,59 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
 {% block title %}Login · TranslateMrBit{% endblock %}
 {% block content %}
 <section class="login-shell">
+  <div class="login-hero">
+    <p class="eyebrow">AI Transcription Platform</p>
+    <h1>TranslateMrBit</h1>
+    <p class="lede">Private, on-server speech-to-text with vocabulary tools, studio editing, quality review, and smart processing — built for professional teams.</p>
+    <div class="wave-bars" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="login-hero-art">
+      <img src="/static/img/hero-waveform.svg" alt="" width="720" height="420" loading="eager" />
+    </div>
+  </div>
   <div class="login-panel">
-    <p class="eyebrow">Private AI Transcription Platform</p>
-    <h1 class="login-title">TranslateMrBit</h1>
-    <p class="lede">Sign in to upload audio and run private transcriptions on your server.</p>
-    {% if error %}
-    <div class="alert alert-error" role="alert">{{ error }}</div>
-    {% endif %}
-    <form method="post" action="/login" class="login-form" autocomplete="current-password">
-      <label class="field">
-        <span>Password</span>
-        <input type="password" name="password" required autofocus placeholder="Enter app password" />
-      </label>
-      <button type="submit" class="btn btn-primary btn-block">Log in</button>
-    </form>
+    <div class="login-card">
+      <p class="eyebrow">Secure sign-in</p>
+      <h2 class="login-title">Welcome back</h2>
+      <p class="lede">Enter the application password to continue.</p>
+      {% if error %}
+      <div class="alert alert-error" role="alert">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/login" class="login-form" autocomplete="current-password" id="login-form">
+        <label class="field">
+          <span>Password</span>
+          <span class="password-wrap">
+            <input type="password" id="password-input" name="password" required autofocus placeholder="Enter app password" />
+            <button type="button" class="password-toggle" id="toggle-password" aria-label="Show password">Show</button>
+          </span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block" id="login-submit">Sign in</button>
+      </form>
+    </div>
   </div>
 </section>
+<script>
+(() => {
+  const input = document.getElementById("password-input");
+  const btn = document.getElementById("toggle-password");
+  const form = document.getElementById("login-form");
+  const submit = document.getElementById("login-submit");
+  if (btn && input) {
+    btn.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.textContent = show ? "Hide" : "Show";
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+  }
+  if (form && submit) {
+    form.addEventListener("submit", () => {
+      submit.disabled = true;
+      submit.textContent = "Signing in…";
+    });
+  }
+})();
+</script>
 {% endblock %}

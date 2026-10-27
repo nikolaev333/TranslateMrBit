@@ -22,6 +22,7 @@ python -m whisper audio.mp3 --language Bulgarian --task transcribe --output_form
 - **MrBit Transcription Studio** — audio-synced segment editor, revisions, Range audio streaming, timed exports (see [`docs/TRANSCRIPTION_STUDIO.md`](docs/TRANSCRIPTION_STUDIO.md))
 - **MrBit Quality Analyzer** — heuristic quality warnings, review workflow, optional WER/CER (see [`docs/QUALITY_ANALYZER.md`](docs/QUALITY_ANALYZER.md))
 - **MrBit Smart Processing Engine** — resource-aware scheduling, model recommendations, multi-backend inference, queue/recovery, processing dashboard (see [`docs/SMART_PROCESSING.md`](docs/SMART_PROCESSING.md))
+- **Casino-inspired UI** — premium dark navy / cyan / purple shell with sidebar navigation (see [`docs/UI_DESIGN_SYSTEM.md`](docs/UI_DESIGN_SYSTEM.md), [`docs/DESIGN_REFERENCE_MRBIT.md`](docs/DESIGN_REFERENCE_MRBIT.md))
 
 ---
 

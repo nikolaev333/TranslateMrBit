@@ -3,7 +3,7 @@
 ## Canonical name
 
 - **Product:** TranslateMrBit
-- **Tagline:** Private AI Transcription Platform
+- **Tagline:** AI Transcription Platform
 - **Repository:** `nikolaev333/TranslateMrBit`
 
 ## Do not
