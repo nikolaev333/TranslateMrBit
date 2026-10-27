@@ -30,6 +30,7 @@ class PreloadResponse(BaseModel):
 
 
 @router.get("/status")
+@router.get("/preload/status")
 async def models_status(request: Request) -> dict[str, Any]:
     return request.app.state.model_preloader.snapshot()
 
@@ -50,6 +51,9 @@ async def preload_models(
     if already_running:
         message = "Model download already in progress"
     else:
-        message = "Model download started (weights only, not loaded into RAM)"
+        message = (
+            "Model download queued for the worker process "
+            "(weights only, not loaded into API RAM)"
+        )
 
     return PreloadResponse(message=message, status=status_payload)

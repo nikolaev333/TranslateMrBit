@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 
     whisper_model: str = "large"
     whisper_language: str = "Bulgarian"
-    whisper_device: str = "auto"
+    # Prefer explicit cpu/cuda in production so /health never needs torch.
+    whisper_device: str = "cpu"
     whisper_model_dir: str = "/models"
     whisper_fp16: str | None = None
 
@@ -47,6 +48,9 @@ class Settings(BaseSettings):
     login_rate_limit: int = 5
     login_rate_window_seconds: int = 60
     worker_poll_interval_seconds: float = 1.0
+    # Production Docker runs a separate worker container. Tests enable this.
+    run_embedded_worker: bool = False
+    unload_model_after_job: bool = True
 
     @field_validator("app_password", "session_secret")
     @classmethod

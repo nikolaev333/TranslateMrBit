@@ -29,6 +29,8 @@ def _base_env() -> None:
     os.environ.setdefault("MAX_CONCURRENT_JOBS", "1")
     os.environ.setdefault("AUTO_DELETE_UPLOADS_DAYS", "0")
     os.environ.setdefault("WORKER_POLL_INTERVAL_SECONDS", "0.2")
+    # Tests run the worker inside the API process with a fake engine.
+    os.environ.setdefault("RUN_EMBEDDED_WORKER", "true")
 
 
 _base_env()
@@ -45,6 +47,7 @@ class FakeWhisperEngine:
         self._loaded_name: str | None = None
         self.fail_next = False
         self.last_call: dict[str, Any] | None = None
+        self.unload_calls = 0
 
     @property
     def device(self) -> str:
@@ -57,6 +60,19 @@ class FakeWhisperEngine:
     def load_model(self, model_name: str | None = None) -> Any:
         self._loaded_name = model_name or "large"
         return object()
+
+    def unload_model(self) -> None:
+        self.unload_calls += 1
+        self._loaded_name = None
+
+    def is_model_downloaded(self, model_name: str) -> bool:
+        return False
+
+    def download_model_weights(self, model_name: str) -> Path:
+        return Path(f"/models/{model_name}.pt")
+
+    def list_model_download_status(self, names=None):
+        return []
 
     def transcribe(
         self,
@@ -179,12 +195,14 @@ async def client(monkeypatch, tmp_path):
             "APP_ENV": "test",
             "AUTO_DELETE_UPLOADS_DAYS": "0",
             "WORKER_POLL_INTERVAL_SECONDS": "0.2",
+            "RUN_EMBEDDED_WORKER": "true",
+            "WHISPER_DEVICE": "cpu",
         }
     )
     get_settings.cache_clear()
 
     fake = FakeWhisperEngine()
-    monkeypatch.setattr("app.main.WhisperEngine", lambda settings: fake)
+    monkeypatch.setattr("app.whisper_engine.WhisperEngine", lambda settings: fake)
     monkeypatch.setattr("app.media.probe_media", fake_probe_media)
 
     transport = ASGITransport(app=app)

@@ -1,8 +1,7 @@
-"""FastAPI application entrypoint."""
+"""FastAPI application entrypoint (API process — no torch/Whisper loading)."""
 
 from __future__ import annotations
 
-import logging
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,16 +16,12 @@ from app import __version__
 from app.cleanup import UploadCleanupTask
 from app.config import get_settings
 from app.database import Database
+from app.device_info import configured_device_label
+from app.logging_setup import log_event, setup_logging
 from app.model_preload import ModelPreloader
 from app.routers import auth_routes, health, jobs, models, pages
-from app.whisper_engine import WhisperEngine
-from app.worker import TranscriptionWorker
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger("whisper_app")
+logger = setup_logging("whisper_api")
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -35,6 +30,15 @@ BASE_DIR = Path(__file__).resolve().parent
 async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.ensure_directories()
+
+    log_event(
+        logger,
+        "api_startup",
+        version=__version__,
+        device=configured_device_label(settings),
+        default_model=settings.whisper_model,
+        embedded_worker=settings.run_embedded_worker,
+    )
 
     if settings.is_production:
         if settings.app_password in {"", "CHANGE_ME"}:
@@ -48,33 +52,40 @@ async def lifespan(app: FastAPI):
 
     db = Database(settings.db_path)
     await db.connect()
-    engine = WhisperEngine(settings)
-    worker = TranscriptionWorker(db, engine, settings)
     cleanup = UploadCleanupTask(db, auto_delete_days=settings.auto_delete_uploads_days)
-    model_preloader = ModelPreloader(engine)
+    model_preloader = ModelPreloader(settings)
 
     app.state.settings = settings
     app.state.db = db
-    app.state.engine = engine
-    app.state.worker = worker
+    app.state.engine = None  # torch lives in the worker process
+    app.state.worker = None
     app.state.cleanup = cleanup
     app.state.model_preloader = model_preloader
     app.state.templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-    await worker.start()
+    # Optional embedded worker for local tests / single-process dev only.
+    if settings.run_embedded_worker:
+        from app.whisper_engine import WhisperEngine
+        from app.worker import TranscriptionWorker
+
+        engine = WhisperEngine(settings)
+        worker = TranscriptionWorker(db, engine, settings)
+        app.state.engine = engine
+        app.state.worker = worker
+        await worker.start()
+        log_event(logger, "embedded_worker_started")
+
     await cleanup.start()
-    logger.info(
-        "Whisper AI app v%s ready (device=%s, default_model=%s)",
-        __version__,
-        engine.device,
-        settings.whisper_model,
-    )
+    log_event(logger, "api_ready", version=__version__)
     try:
         yield
     finally:
         await cleanup.stop()
-        await worker.stop()
+        worker = getattr(app.state, "worker", None)
+        if worker is not None:
+            await worker.stop()
         await db.close()
+        log_event(logger, "api_shutdown")
 
 
 app = FastAPI(

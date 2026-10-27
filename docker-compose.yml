@@ -18,6 +18,8 @@ services:
       OUTPUT_DIR: /data/outputs
       DB_PATH: /data/db/whisper.db
       WHISPER_MODEL_DIR: /models
+      WHISPER_DEVICE: "${WHISPER_DEVICE:-cpu}"
+      RUN_EMBEDDED_WORKER: "false"
       SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-true}"
     volumes:
       - whisper_uploads:/data/uploads
@@ -27,9 +29,49 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 40s
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--proxy-headers",
+        "--forwarded-allow-ips",
+        "*",
+      ]
+
+  whisper-worker:
+    build: .
+    image: whisper-ai:latest
+    container_name: whisper-ai-worker
+    restart: unless-stopped
+    depends_on:
+      - whisper
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: production
+      DATA_DIR: /data
+      UPLOAD_DIR: /data/uploads
+      OUTPUT_DIR: /data/outputs
+      DB_PATH: /data/db/whisper.db
+      WHISPER_MODEL_DIR: /models
+      WHISPER_DEVICE: "${WHISPER_DEVICE:-cpu}"
+      RUN_EMBEDDED_WORKER: "false"
+      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-true}"
+    volumes:
+      - whisper_uploads:/data/uploads
+      - whisper_outputs:/data/outputs
+      - whisper_db:/data/db
+      - whisper_models:/models
+    # No HEALTHCHECK / ports — worker may OOM on large models without taking down the API.
+    command: ["python", "-m", "app.worker_main"]
 
 volumes:
   whisper_uploads:

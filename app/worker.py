@@ -1,4 +1,4 @@
-"""In-process durable job worker (one active transcription at a time)."""
+"""Durable job worker (runs in worker process or optionally embedded in API for tests)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.database import utc_now
+from app.logging_setup import log_event
 from app.models import JobStatus
 
 if TYPE_CHECKING:
@@ -40,10 +41,10 @@ class TranscriptionWorker:
     async def start(self) -> None:
         recovered = await self.db.requeue_interrupted_jobs()
         if recovered:
-            logger.info("Requeued %s interrupted job(s)", recovered)
+            log_event(logger, "interrupted_jobs_failed", count=recovered)
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="transcription-worker")
-        logger.info("Transcription worker started")
+        log_event(logger, "transcription_worker_started")
 
     async def stop(self) -> None:
         self._stop.set()
@@ -53,7 +54,7 @@ class TranscriptionWorker:
             except asyncio.TimeoutError:
                 self._task.cancel()
         self._executor.shutdown(wait=False, cancel_futures=True)
-        logger.info("Transcription worker stopped")
+        log_event(logger, "transcription_worker_stopped")
 
     async def _loop(self) -> None:
         while not self._stop.is_set():
@@ -77,11 +78,17 @@ class TranscriptionWorker:
 
     async def _process_job(self, job: dict) -> None:
         job_id = job["id"]
-        logger.info("Processing job %s (%s)", job_id, job["original_filename"])
+        model_name = job.get("model_name") or self.settings.whisper_model
+        log_event(
+            logger,
+            "job_process_start",
+            job_id=job_id,
+            model=model_name,
+            filename=job.get("original_filename"),
+        )
         loop = asyncio.get_running_loop()
 
         def progress(message: str) -> None:
-            # Fire-and-forget progress updates from the worker thread
             fut = asyncio.run_coroutine_threadsafe(
                 self.db.update_job(job_id, progress_message=message),
                 loop,
@@ -97,7 +104,6 @@ class TranscriptionWorker:
                 raise FileNotFoundError("Uploaded audio file is missing")
 
             language = job.get("language") or self.settings.whisper_language
-            model_name = job.get("model_name") or self.settings.whisper_model
             task = job.get("task") or "transcribe"
 
             result = await loop.run_in_executor(
@@ -118,7 +124,6 @@ class TranscriptionWorker:
             )
 
             text = (result.get("text") or "").strip()
-            # Prefer the written TXT file content for fidelity with Whisper CLI
             txt_path = paths.get("txt")
             if txt_path and txt_path.is_file():
                 text = txt_path.read_text(encoding="utf-8")
@@ -137,9 +142,16 @@ class TranscriptionWorker:
                 output_json_path=str(paths.get("json") or ""),
                 completed_at=utc_now(),
             )
-            logger.info("Job %s completed", job_id)
+            log_event(logger, "job_process_done", job_id=job_id, model=model_name)
         except Exception as exc:
             err = _safe_error_message(exc)
+            log_event(
+                logger,
+                "job_process_failed",
+                job_id=job_id,
+                model=model_name,
+                error=err,
+            )
             logger.error("Job %s failed: %s\n%s", job_id, err, traceback.format_exc())
             await self.db.update_job(
                 job_id,
@@ -148,6 +160,13 @@ class TranscriptionWorker:
                 error_message=err,
                 completed_at=utc_now(),
             )
+        finally:
+            if self.settings.unload_model_after_job:
+                try:
+                    self.engine.unload_model()
+                    log_event(logger, "model_unloaded_after_job", job_id=job_id)
+                except Exception:
+                    logger.debug("unload_model failed", exc_info=True)
 
 
 def _safe_float(value) -> float | None:
@@ -163,7 +182,6 @@ def _safe_error_message(exc: BaseException) -> str:
     """User-facing error without leaking internals/secrets."""
     name = type(exc).__name__
     message = str(exc).strip() or "Unexpected error"
-    # Truncate and strip potential path secrets beyond basename context
     if len(message) > 400:
         message = message[:400] + "…"
     lowered = message.lower()
@@ -172,6 +190,16 @@ def _safe_error_message(exc: BaseException) -> str:
             return f"{name}: Processing failed"
     if "cuda" in lowered and "out of memory" in lowered:
         return "GPU out of memory. Try a smaller model or free GPU memory."
+    if "cannot allocate memory" in lowered or "out of memory" in lowered:
+        return (
+            "Out of memory while loading/running the model. "
+            "Try model 'small' first, or add RAM. large needs ~8GB+ free."
+        )
+    if "killed" in lowered or "sigkill" in lowered:
+        return (
+            "Worker process was killed (likely OOM). "
+            "Try a smaller model such as 'small' before 'large'."
+        )
     if "ffmpeg" in lowered or "ffprobe" in lowered:
         return "Audio decoding failed (FFmpeg error). Check that the file is a valid media file."
     return f"{name}: {message}"

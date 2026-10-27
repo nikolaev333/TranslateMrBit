@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -16,7 +15,8 @@ from tests.conftest import FakeWhisperEngine, fake_probe_media, login
 
 
 @pytest.mark.asyncio
-async def test_requeue_interrupted_processing_jobs(tmp_path):
+async def test_fail_interrupted_processing_jobs(tmp_path):
+    """Interrupted jobs must fail (not requeue) to avoid large-model OOM loops."""
     db_path = tmp_path / "db" / "recover.db"
     db_path.parent.mkdir(parents=True)
     db = Database(str(db_path))
@@ -44,8 +44,8 @@ async def test_requeue_interrupted_processing_jobs(tmp_path):
         assert count == 1
         recovered = await db.get_job(job["id"])
         assert recovered is not None
-        assert recovered["status"] == JobStatus.QUEUED.value
-        assert "Requeued" in (recovered["progress_message"] or "")
+        assert recovered["status"] == JobStatus.FAILED.value
+        assert "Interrupted" in (recovered["error_message"] or "")
     finally:
         await db.close()
 
@@ -106,11 +106,12 @@ async def recovery_client(monkeypatch, tmp_path):
             "APP_ENV": "test",
             "AUTO_DELETE_UPLOADS_DAYS": "0",
             "WORKER_POLL_INTERVAL_SECONDS": "0.2",
+            "RUN_EMBEDDED_WORKER": "true",
+            "WHISPER_DEVICE": "cpu",
         }
     )
     get_settings.cache_clear()
 
-    # Pre-seed an interrupted processing job before app starts
     upload_file = upload / "33333333-3333-3333-3333-333333333333.mp3"
     upload_file.write_bytes(b"ID3fakeaudio")
 
@@ -138,30 +139,22 @@ async def recovery_client(monkeypatch, tmp_path):
     from app.main import app
 
     fake = FakeWhisperEngine()
-    monkeypatch.setattr("app.main.WhisperEngine", lambda settings: fake)
+    monkeypatch.setattr("app.whisper_engine.WhisperEngine", lambda settings: fake)
     monkeypatch.setattr("app.media.probe_media", fake_probe_media)
 
     transport = ASGITransport(app=app)
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            import asyncio
-
             await login(ac)
-            job = None
-            for _ in range(40):
-                res = await ac.get("/api/jobs/33333333-3333-3333-3333-333333333333")
-                if res.status_code == 200:
-                    job = res.json()
-                    if job["status"] in {"completed", "failed"}:
-                        break
-                await asyncio.sleep(0.15)
-            ac._recovered_job = job  # type: ignore[attr-defined]
+            res = await ac.get("/api/jobs/33333333-3333-3333-3333-333333333333")
+            ac._recovered_job = res.json()  # type: ignore[attr-defined]
             yield ac
 
 
 @pytest.mark.asyncio
-async def test_worker_recovers_interrupted_job(recovery_client):
+async def test_worker_marks_interrupted_job_failed(recovery_client):
     job = recovery_client._recovered_job  # type: ignore[attr-defined]
     assert job is not None
-    assert job["status"] == "completed"
+    assert job["status"] == "failed"
     assert job["original_filename"] == "interrupted.mp3"
+    assert "Interrupted" in (job.get("error_message") or "")

@@ -25,14 +25,23 @@ Browser (HTTPS)
 Coolify reverse proxy (TLS)
     │
     ▼
-Uvicorn + FastAPI  (:8000)
+whisper (API)  Uvicorn + FastAPI  (:8000)
     ├── Auth (HTTP-only session cookie)
     ├── Upload + FFprobe validation
     ├── SQLite job store (/data/db)
-    └── In-process worker (1 job at a time)
-            └── openai-whisper + PyTorch
-                    └── weights in /models
+    ├── /health (never loads torch)
+    └── Enqueue model downloads for the worker
+            │
+            ▼  shared volumes (/data, /models)
+whisper-worker  (separate process/container)
+    ├── Job loop (1 at a time)
+    ├── Model preload downloads
+    └── openai-whisper + PyTorch (CPU by default)
+            └── weights in /models
 ```
+
+If the worker OOMs on `large`, the API container stays up and Coolify keeps
+routing. Mark the job failed, then retry with `small` before `large`.
 
 | Path | Purpose |
 |------|---------|
@@ -165,14 +174,20 @@ Create a GitHub repository and push this project (do **not** commit `.env`).
 
 ### 2. Create application in Coolify
 
-1. **New Resource** → **Docker Compose** *or* **Dockerfile**.
-2. Connect the GitHub repo.
-3. Build pack: **Dockerfile** (root `Dockerfile`).
-4. Port: **8000**.
-5. Set environment variables (see below).
-6. Attach persistent volumes (see below).
-7. Enable **HTTPS** / generate Let’s Encrypt certificate for your domain.
-8. Deploy.
+Prefer **Docker Compose** (this repo’s `docker-compose.yml`) so Coolify runs both:
+
+- `whisper` — FastAPI/Uvicorn API on port **8000** (attach the public domain here)
+- `whisper-worker` — separate transcription/download process (no public port)
+
+If you deploy Dockerfile-only, the API stays up but jobs will not process until a worker runs (`python -m app.worker_main`) with the same volumes/env.
+
+1. **New Resource** → **Docker Compose**.
+2. Connect the GitHub repo; compose file `/docker-compose.yml`.
+3. Map the public domain / proxy to the **`whisper`** service, port **8000**.
+4. Set environment variables (see below).
+5. Keep the named volumes (uploads / outputs / db / models).
+6. Enable **HTTPS** / Let’s Encrypt when you have a real domain.
+7. Deploy (Redeploy after pulls).
 
 ### Coolify environment variables
 
@@ -184,7 +199,8 @@ Create a GitHub repository and push this project (do **not** commit `.env`).
 | `SESSION_HTTPS_ONLY` | `true` | Required behind HTTPS |
 | `WHISPER_MODEL` | `large` | Default model |
 | `WHISPER_LANGUAGE` | `Bulgarian` | Default language |
-| `WHISPER_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
+| `WHISPER_DEVICE` | `cpu` | Use `cpu` on OVH without GPU; `cuda` only with NVIDIA toolkit |
+| `RUN_EMBEDDED_WORKER` | `false` | Keep false when using the `whisper-worker` service |
 | `WHISPER_MODEL_DIR` | `/models` | Weight cache |
 | `DATA_DIR` | `/data` | |
 | `UPLOAD_DIR` | `/data/uploads` | |
@@ -219,9 +235,28 @@ No SSH or RDP is required for day-to-day transcription after deploy.
 
 ### Health check & restart
 
-- Health endpoint: `GET /health`
-- Dockerfile `HEALTHCHECK` and Compose healthcheck are included
-- Compose `restart: unless-stopped` (Coolify should also keep the service running)
+- Health endpoint: `GET /health` (never loads torch; `model_loaded: null` is normal for the API)
+- Dockerfile `HEALTHCHECK` uses `curl` against `http://127.0.0.1:8000/health`
+- Compose `restart: unless-stopped` on API and worker
+- Worker OOM (exit 137) should not mark the API Degraded
+
+### After redeploy — verify routing
+
+```bash
+# From your laptop (replace with your Coolify URL)
+curl -fsS http://YOUR-HOST/health
+# Expect: {"status":"ok","version":"1.0.0","device":"cpu","model_loaded":null}
+
+curl -fsS -o /dev/null -w "%{http_code}\n" http://YOUR-HOST/login
+# Expect: 200
+
+# Login then enqueue a small-model download (optional)
+# POST /api/login  {"password":"..."}
+# POST /api/models/preload  {"models":["small"]}
+# GET  /api/models/preload/status
+```
+
+In Coolify: API service **Running** + healthy; worker **Running**. Intermittent Traefik `404 page not found` usually means the API container was restarting or failing healthchecks — check Runtime Logs for `event=api_ready` and worker `event=worker_ready`. Test transcription with model **`small`** before **`large`** on low-RAM VPS hosts.
 
 ---
 
