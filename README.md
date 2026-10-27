@@ -1,8 +1,13 @@
-# Whisper AI – Self-Hosted Web Transcription
+# TranslateMrBit
 
-Private, production-ready web UI for **OpenAI Whisper** (`openai-whisper`) on a single OVHcloud server via **Coolify + Docker**.
+**Private AI Transcription Platform**
 
-Preserves the same behaviour as a local CLI run:
+Self-hosted transcription UI and API for OVHcloud / Coolify / Docker.
+Product identity: **TranslateMrBit** (repository `nikolaev333/TranslateMrBit`).
+
+Speech recognition may use the open-source [`openai-whisper`](https://github.com/openai/whisper) package internally under the MIT license. TranslateMrBit does **not** claim ownership of Whisper — see [`NOTICE.md`](NOTICE.md) and [`docs/LICENSING.md`](docs/LICENSING.md).
+
+Preserves the same behaviour as a local Whisper CLI run:
 
 ```bash
 python -m whisper audio.mp3 --language Bulgarian --task transcribe --output_format txt --model large

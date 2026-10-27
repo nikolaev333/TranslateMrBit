@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="MrBit Call AI",
+    title="TranslateMrBit",
     version=__version__,
     docs_url=None,
     redoc_url=None,

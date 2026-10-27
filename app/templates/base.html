@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <title>{% block title %}MrBit Call AI{% endblock %}</title>
+  <meta name="application-name" content="TranslateMrBit" />
+  <title>{% block title %}TranslateMrBit{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -17,7 +18,10 @@
   <header class="topbar">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true"></span>
-      <span class="brand-text">MrBit Call AI</span>
+      <span class="brand-copy">
+        <span class="brand-text">TranslateMrBit</span>
+        <span class="brand-tagline">Private AI Transcription Platform</span>
+      </span>
     </a>
     {% block nav %}{% endblock %}
   </header>
@@ -25,7 +29,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="footer">
-    <span>MrBit Call AI · private transcription</span>
+    <span>TranslateMrBit · Private AI Transcription Platform</span>
   </footer>
   {% block scripts %}{% endblock %}
 </body>
