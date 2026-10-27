@@ -31,7 +31,7 @@ class PreloadResponse(BaseModel):
 
 @router.get("/status")
 async def models_status(request: Request) -> dict[str, Any]:
-    return request.app.state.model_preloader.status
+    return request.app.state.model_preloader.snapshot()
 
 
 @router.post("/preload", response_model=PreloadResponse)
@@ -40,7 +40,7 @@ async def preload_models(
     body: PreloadRequest | None = None,
 ) -> PreloadResponse:
     preloader = request.app.state.model_preloader
-    already_running = preloader.status.get("running")
+    already_running = preloader.snapshot().get("running")
     names = (body.models if body else None) or list(SUPPORTED_MODELS)
     try:
         status_payload = preloader.start(names)

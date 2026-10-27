@@ -62,19 +62,34 @@ class WhisperEngine:
             return str(self.settings.whisper_fp16).lower() in {"1", "true", "yes", "on"}
         return self.device == "cuda"
 
+    # Official openai-whisper checkpoint filenames (avoid importing torch for status checks).
+    CHECKPOINT_FILES = {
+        "tiny": "tiny.pt",
+        "base": "base.pt",
+        "small": "small.pt",
+        "medium": "medium.pt",
+        "large": "large-v3.pt",
+        "turbo": "large-v3-turbo.pt",
+        "tiny.en": "tiny.en.pt",
+        "base.en": "base.en.pt",
+        "small.en": "small.en.pt",
+        "medium.en": "medium.en.pt",
+        "large-v1": "large-v1.pt",
+        "large-v2": "large-v2.pt",
+        "large-v3": "large-v3.pt",
+    }
+
     def download_root(self) -> Path:
         root = Path(self.settings.whisper_model_dir)
         root.mkdir(parents=True, exist_ok=True)
         return root
 
     def model_checkpoint_path(self, model_name: str) -> Path | None:
-        """Return on-disk checkpoint path if Whisper maps this name to a URL."""
-        self._import_deps()
-        models = getattr(self._whisper, "_MODELS", {}) or {}
-        url = models.get(model_name)
-        if not url:
+        """Return expected on-disk checkpoint path without importing torch."""
+        filename = self.CHECKPOINT_FILES.get(model_name)
+        if not filename:
             return None
-        return self.download_root() / Path(str(url).split("/")[-1])
+        return self.download_root() / filename
 
     def is_model_downloaded(self, model_name: str) -> bool:
         path = self.model_checkpoint_path(model_name)

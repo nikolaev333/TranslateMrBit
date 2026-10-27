@@ -23,18 +23,26 @@ class ModelPreloader:
         self._failed: dict[str, str] = {}
         self._requested: list[str] = []
 
+    def snapshot(self) -> dict[str, Any]:
+        """Lightweight status — disk checks only, no torch import."""
+        with self._lock:
+            running = self._running
+            current = self._current
+            requested = list(self._requested)
+            completed = list(self._completed)
+            failed = dict(self._failed)
+        return {
+            "running": running,
+            "current": current,
+            "requested": requested,
+            "completed": completed,
+            "failed": failed,
+            "models": self.engine.list_model_download_status(SUPPORTED_MODELS),
+        }
+
     @property
     def status(self) -> dict[str, Any]:
-        with self._lock:
-            models = self.engine.list_model_download_status(SUPPORTED_MODELS)
-            return {
-                "running": self._running,
-                "current": self._current,
-                "requested": list(self._requested),
-                "completed": list(self._completed),
-                "failed": dict(self._failed),
-                "models": models,
-            }
+        return self.snapshot()
 
     def start(self, model_names: list[str] | None = None) -> dict[str, Any]:
         names = [n.strip() for n in (model_names or list(SUPPORTED_MODELS)) if n and n.strip()]
@@ -44,20 +52,24 @@ class ModelPreloader:
 
         with self._lock:
             if self._running:
-                return self.status
-            self._running = True
-            self._current = None
-            self._completed = []
-            self._failed = {}
-            self._requested = names
-            self._thread = threading.Thread(
-                target=self._run,
-                args=(names,),
-                name="whisper-model-preload",
-                daemon=True,
-            )
-            self._thread.start()
-            return self.status
+                # Do not call snapshot while holding the lock.
+                already = True
+            else:
+                already = False
+                self._running = True
+                self._current = None
+                self._completed = []
+                self._failed = {}
+                self._requested = names
+                self._thread = threading.Thread(
+                    target=self._run,
+                    args=(names,),
+                    name="whisper-model-preload",
+                    daemon=True,
+                )
+                self._thread.start()
+
+        return self.snapshot()
 
     def _run(self, names: list[str]) -> None:
         try:
