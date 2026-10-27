@@ -4,8 +4,9 @@ services:
     image: whisper-ai:latest
     container_name: whisper-ai
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # Do not bind host :8000 — Coolify already uses it. Coolify proxies via domain/port mapping.
+    expose:
+      - "8000"
     env_file:
       - path: .env
         required: false
@@ -17,7 +18,7 @@ services:
       OUTPUT_DIR: /data/outputs
       DB_PATH: /data/db/whisper.db
       WHISPER_MODEL_DIR: /models
-      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-false}"
+      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-true}"
     volumes:
       - whisper_uploads:/data/uploads
       - whisper_outputs:/data/outputs
