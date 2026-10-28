@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Quality Analyzer · TranslateMrBit{% endblock %}
+{% block nav_active %}quality{% endblock %}
+{% block page_heading %}Quality Analyzer{% endblock %}
+{% block header_actions %}
+<a class="btn btn-secondary" href="/history">History</a>
+<a class="btn btn-primary" href="/transcribe">New Transcription</a>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <p class="eyebrow">Feature 3</p>
+  <h1>Quality Analyzer</h1>
+  <p class="lede">Run rule-based quality checks, review warnings, and export reports. Pick a completed job below to analyze.</p>
+</section>
+
+<section class="panel">
+  <h2>Completed jobs</h2>
+  {% if jobs %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Model</th>
+          <th>Language</th>
+          <th>Completed</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td>{{ job.original_filename }}</td>
+          <td>{{ job.model_name }}</td>
+          <td>{{ job.language }}</td>
+          <td class="muted small">{{ job.completed_at or job.updated_at or "—" }}</td>
+          <td>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="/quality/{{ job.id }}">Open Analyzer</a>
+              <a class="btn btn-ghost" href="/studio/{{ job.id }}">Studio</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No completed transcriptions yet. Run a job from <a href="/transcribe">New Transcription</a>, then open Quality Analyzer here.</p>
+  {% endif %}
+</section>
+{% endblock %}

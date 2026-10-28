@@ -33,8 +33,8 @@
         <a class="nav-link {% if active == 'transcribe' %}active{% endif %}" href="/transcribe"><span class="nav-ico" aria-hidden="true"></span>New Transcription</a>
         <a class="nav-link {% if active == 'history' %}active{% endif %}" href="/history"><span class="nav-ico" aria-hidden="true"></span>Transcription History</a>
         <a class="nav-link {% if active == 'vocabulary' %}active{% endif %}" href="/vocabulary"><span class="nav-ico" aria-hidden="true"></span>Smart Vocabulary</a>
-        <a class="nav-link {% if active == 'studio' %}active{% endif %}{% if not job_id %} disabled{% endif %}" href="{% if job_id %}/studio/{{ job_id }}{% else %}#{% endif %}" {% if not job_id %}aria-disabled="true" title="Open from a completed job"{% endif %}><span class="nav-ico" aria-hidden="true"></span>Transcription Studio</a>
-        <a class="nav-link {% if active == 'quality' %}active{% endif %}{% if not job_id %} disabled{% endif %}" href="{% if job_id %}/quality/{{ job_id }}{% else %}#{% endif %}" {% if not job_id %}aria-disabled="true" title="Open from a completed job"{% endif %}><span class="nav-ico" aria-hidden="true"></span>Quality Analyzer</a>
+        <a class="nav-link {% if active == 'studio' %}active{% endif %}" href="{% if job_id %}/studio/{{ job_id }}{% else %}/studio{% endif %}"><span class="nav-ico" aria-hidden="true"></span>Transcription Studio</a>
+        <a class="nav-link {% if active == 'quality' %}active{% endif %}" href="{% if job_id %}/quality/{{ job_id }}{% else %}/quality{% endif %}"><span class="nav-ico" aria-hidden="true"></span>Quality Analyzer</a>
         <a class="nav-link {% if active == 'processing' %}active{% endif %}" href="/processing"><span class="nav-ico" aria-hidden="true"></span>Smart Processing</a>
         <a class="nav-link {% if active == 'settings' %}active{% endif %}" href="/settings"><span class="nav-ico" aria-hidden="true"></span>Settings</a>
       </nav>

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Transcription Studio · TranslateMrBit{% endblock %}
+{% block nav_active %}studio{% endblock %}
+{% block page_heading %}Transcription Studio{% endblock %}
+{% block header_actions %}
+<a class="btn btn-secondary" href="/history">History</a>
+<a class="btn btn-primary" href="/transcribe">New Transcription</a>
+{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <p class="eyebrow">Feature 2</p>
+  <h1>Transcription Studio</h1>
+  <p class="lede">Edit segments, sync audio, and export revised transcripts. Pick a completed job below to open the editor.</p>
+</section>
+
+<section class="panel">
+  <h2>Completed jobs</h2>
+  {% if jobs %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Model</th>
+          <th>Language</th>
+          <th>Completed</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td>{{ job.original_filename }}</td>
+          <td>{{ job.model_name }}</td>
+          <td>{{ job.language }}</td>
+          <td class="muted small">{{ job.completed_at or job.updated_at or "—" }}</td>
+          <td>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="/studio/{{ job.id }}">Open Studio</a>
+              <a class="btn btn-ghost" href="/quality/{{ job.id }}">Quality</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No completed transcriptions yet. Run a job from <a href="/transcribe">New Transcription</a>, then open it here.</p>
+  {% endif %}
+</section>
+{% endblock %}

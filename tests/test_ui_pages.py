@@ -39,8 +39,15 @@ async def test_overview_and_transcribe_nav(client):
 @pytest.mark.asyncio
 async def test_feature_pages_render(client):
     await login(client)
-    for path in ("/history", "/vocabulary", "/processing"):
+    for path in ("/history", "/vocabulary", "/processing", "/studio", "/quality"):
         res = await client.get(path)
         assert res.status_code == 200, path
         assert "TranslateMrBit" in res.text
         assert "app-sidebar" in res.text
+    processing = await client.get("/processing")
+    assert 'href="/studio"' in processing.text
+    assert 'href="/quality"' in processing.text
+    assert "nav-link disabled" not in processing.text
+    assert 'aria-disabled="true"' not in processing.text
+    assert "Transcription Studio" in (await client.get("/studio")).text
+    assert "Quality Analyzer" in (await client.get("/quality")).text

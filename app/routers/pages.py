@@ -137,6 +137,24 @@ async def vocabulary_page(
     )
 
 
+async def _completed_jobs(db: Database, limit: int = 50) -> list[dict]:
+    jobs = await db.list_jobs(limit=limit, offset=0)
+    return [j for j in jobs if str(j.get("status") or "") == "completed"]
+
+
+@router.get("/studio", response_class=HTMLResponse)
+async def studio_hub_page(
+    request: Request,
+    db: Annotated[Database, Depends(get_db)],
+    _: Annotated[None, Depends(require_auth)],
+):
+    templates = get_templates(request)
+    return templates.TemplateResponse(
+        "studio_hub.html",
+        {"request": request, "jobs": await _completed_jobs(db)},
+    )
+
+
 @router.get("/studio/{job_id}", response_class=HTMLResponse)
 async def studio_page(
     job_id: str,
@@ -147,6 +165,19 @@ async def studio_page(
     return templates.TemplateResponse(
         "studio.html",
         {"request": request, "job_id": job_id},
+    )
+
+
+@router.get("/quality", response_class=HTMLResponse)
+async def quality_hub_page(
+    request: Request,
+    db: Annotated[Database, Depends(get_db)],
+    _: Annotated[None, Depends(require_auth)],
+):
+    templates = get_templates(request)
+    return templates.TemplateResponse(
+        "quality_hub.html",
+        {"request": request, "jobs": await _completed_jobs(db)},
     )
 
 
