@@ -236,6 +236,5 @@ CREATE TABLE IF NOT EXISTS processing_metrics (
 );
 
 CREATE INDEX IF NOT EXISTS idx_processing_metrics_job ON processing_metrics(job_id);
-CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority DESC, created_at ASC);
 
 """

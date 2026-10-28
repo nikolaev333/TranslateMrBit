@@ -127,6 +127,12 @@ class Database:
         for name, sql in migrations:
             if name not in existing:
                 await self.conn.execute(sql)
+        # Indexes that depend on migrated columns must run after ALTER TABLE.
+        # SCHEMA_SQL cannot create them safely on older prod DBs (CREATE TABLE IF NOT EXISTS
+        # leaves the old shape, then CREATE INDEX ... (priority) fails startup).
+        await self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority DESC, created_at ASC)"
+        )
 
     async def seed_default_vocabulary(self) -> int:
         """Insert demo terms only when the vocabulary table is empty."""
