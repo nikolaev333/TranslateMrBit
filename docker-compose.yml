@@ -20,18 +20,25 @@ services:
       WHISPER_MODEL_DIR: /models
       WHISPER_DEVICE: "${WHISPER_DEVICE:-cpu}"
       RUN_EMBEDDED_WORKER: "false"
-      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-true}"
+      # HTTP sslip.io domains need false; override in Coolify env when using TLS.
+      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-false}"
     volumes:
       - whisper_uploads:/data/uploads
       - whisper_outputs:/data/outputs
       - whisper_db:/data/db
       - whisper_models:/models
+    # Share Coolify proxy network so Traefik can reach the API after proxy restarts.
+    networks:
+      - default
+      - coolify
+    labels:
+      - traefik.docker.network=coolify
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 90s
     command:
       [
         "uvicorn",
@@ -64,18 +71,21 @@ services:
       WHISPER_MODEL_DIR: /models
       WHISPER_DEVICE: "${WHISPER_DEVICE:-cpu}"
       RUN_EMBEDDED_WORKER: "false"
-      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-true}"
+      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-false}"
     volumes:
       - whisper_uploads:/data/uploads
       - whisper_outputs:/data/outputs
       - whisper_db:/data/db
       - whisper_models:/models
     # Disable image HEALTHCHECK (curl :8000/health). Worker has no HTTP server.
-    # Without this override Docker inherits Dockerfile HEALTHCHECK → Unhealthy → Coolify Degraded.
+    # Prefer compose `disable` over Coolify-only `NONE` so Docker never marks worker Unhealthy.
     healthcheck:
-      test: ["NONE"]
+      disable: true
     labels:
       - coolify.exclude_from_hc=true
+    networks:
+      - default
+      - coolify
     command: ["python", "-m", "app.worker_main"]
 
 volumes:
@@ -83,3 +93,7 @@ volumes:
   whisper_outputs:
   whisper_db:
   whisper_models:
+
+networks:
+  coolify:
+    external: true
